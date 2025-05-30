@@ -21,8 +21,10 @@ export function TaskDetails() {
 		)
 	}
 
-	const isCurrentTask = currentSession?.taskId === selectedTask.id
-	const isRunning = currentSession?.isRunning && isCurrentTask
+	const isCurrentTask = Array.isArray(currentSession)
+		? currentSession.find(s => s.taskId === selectedTask.id)
+		: null;
+	const isRunning = isCurrentTask?.isRunning ?? false
 
 	const handleStart = () => {
 		if (!canStartTask(selectedTask.id)) {
@@ -117,7 +119,7 @@ export function TaskDetails() {
 								<div className="flex items-center justify-between">
 									<span className="text-sm font-medium text-green-800">Текущая сессия</span>
 									<span className="text-lg font-mono text-green-800">
-										{formatTime(getCurrentElapsed(currentSession))}
+										{formatTime(getCurrentElapsed(isCurrentTask))}
 									</span>
 								</div>
 							</div>
@@ -132,20 +134,28 @@ export function TaskDetails() {
 							) : (
 								<>
 									{isRunning ? (
-										<Button variant="outline" onClick={pauseTimer} className="flex items-center gap-2">
-											<Pause className="w-4 h-4" />
-											Пауза
-										</Button>
+											<Button
+												variant="outline"
+												onClick={() => pauseTimer(selectedTask.id)}
+												className="flex items-center gap-2"
+											>
+												<Pause className="w-4 h-4" />
+												Пауза
+											</Button>									  
 									) : (
 										<Button onClick={() => startTimer(selectedTask.id)} className="flex items-center gap-2">
 											<Play className="w-4 h-4" />
 											Продолжить
 										</Button>
 									)}
-									<Button variant="destructive" onClick={finishTimer} className="flex items-center gap-2">
-										<Square className="w-4 h-4" />
-										Завершить
-									</Button>
+										<Button
+											variant="destructive"
+											onClick={() => finishTimer(selectedTask.id)}
+											className="flex items-center gap-2"
+										>
+											<Square className="w-4 h-4" />
+											Завершить
+										</Button>
 								</>
 							)}
 						</div>

@@ -29,9 +29,10 @@ export interface RedmineTask {
 export interface TimeSession {
 	taskId: number
 	startTime: number
-	totalElapsed: number // Total time accumulated from previous intervals
-	currentIntervalStart: number | null // Start time of current running interval
-	isRunning: boolean
+	totalElapsed: number
+	currentIntervalStart: number | null
+	isRunning: boolean,
+	isFinished: boolean
 }
 
 export interface TimeLogData {
@@ -57,12 +58,14 @@ interface RedmineStore {
 	tasks: RedmineTask[]
 	selectedTask: RedmineTask | null
 	isLoading: boolean
+	isFinished: boolean,
 
 	// Activities
 	activities: Activity[]
 
 	// Time tracking
-	currentSession: TimeSession | null
+	sessions: TimeSession[],
+
 
 	// Modal
 	timeLogModal: {
@@ -71,7 +74,7 @@ interface RedmineStore {
 	}
 
 	// Timer
-	timerInterval: NodeJS.Timeout | null
+	timerInterval: Record<number, ReturnType<typeof setInterval>>
 
 	// Actions
 	saveConfig: (url: string, apiKey: string) => void
@@ -82,8 +85,9 @@ interface RedmineStore {
 	loadActivities: () => Promise<void>
 	selectTask: (task: RedmineTask) => void
 	startTimer: (taskId: number) => void
-	pauseTimer: () => void
-	finishTimer: () => void
+	pauseTimer: (taskId: number) => void
+	finishTimer: (taskId: number) => void
+	markTaskAsFinished: () => void
 	canStartTask: (taskId: number) => boolean
 	submitTimeLog: (data: TimeLogData) => Promise<void>
 	closeTimeLogModal: () => void
@@ -103,9 +107,10 @@ export const useRedmineStore = create<RedmineStore>()(
 			selectedTask: null,
 			isLoading: false,
 			activities: [],
-			currentSession: null,
+			sessions: [],
 			timeLogModal: { isOpen: false },
-			timerInterval: null,
+			timerInterval: {},
+			isFinished: false,
 
 			// Configuration actions
 			saveConfig: (url: string, apiKey: string) => {
@@ -123,7 +128,7 @@ export const useRedmineStore = create<RedmineStore>()(
 					isConfigured: false,
 					tasks: [],
 					selectedTask: null,
-					currentSession: null,
+					sessions: [],
 				})
 			},
 
@@ -198,107 +203,158 @@ export const useRedmineStore = create<RedmineStore>()(
 
 			// Timer actions
 			startTimer: (taskId: number) => {
-				const { currentSession, timerInterval } = get()
+				const { sessions, timerInterval } = get()
 				const now = Date.now()
 
-				// Clear existing interval if any
-				if (timerInterval) {
-					clearInterval(timerInterval)
-				}
+				// Найти существующую сессию этой задачи
+				const existing = Array.isArray(sessions)
+					? sessions.find(s => s.taskId === taskId)
+					: null
 
-				if (currentSession?.taskId === taskId && !currentSession.isRunning) {
-					// Resume existing session
+				// Если такой сессии нет и уже есть 3 активных — не даём стартовать
+				if (!existing && sessions.length >= 3) return
+
+				if (existing) {
+					// Если уже есть — возобновляем
 					set({
-						currentSession: {
-							...currentSession,
-							currentIntervalStart: now,
-							isRunning: true,
-						},
+						sessions: sessions.map(s =>
+							s.taskId === taskId
+								? { ...s, isRunning: true, currentIntervalStart: now }
+								: s
+						),
 					})
 				} else {
-					// Start new session
-					set({
-						currentSession: {
-							taskId,
-							startTime: now,
-							totalElapsed: 0,
-							currentIntervalStart: now,
-							isRunning: true,
-						},
-					})
+					// Добавляем новую сессию
+					const newSession: TimeSession = {
+						taskId,
+						startTime: now,
+						totalElapsed: 0,
+						currentIntervalStart: now,
+						isRunning: true,
+						isFinished: false,
+					}
+					set({ sessions: [...sessions, newSession] })
 				}
 
-				// Start the timer interval
+				// Запустить отдельный setInterval для этой задачи
 				const interval = setInterval(() => {
-					const state = get()
-					if (state.currentSession?.isRunning && state.currentSession.taskId === taskId) {
-						// Force re-render by updating the session
-						set({
-							currentSession: { ...state.currentSession },
-						})
-					}
+					const { sessions } = get()
+					set({ sessions: [...sessions] })
 				}, 1000)
 
-				set({ timerInterval: interval })
+				set({ timerInterval: { ...timerInterval, [taskId]: interval } })
 			},
 
-			pauseTimer: () => {
-				const { currentSession, timerInterval } = get()
-				if (!currentSession?.isRunning || !currentSession.currentIntervalStart) return
-
+			pauseTimer: (taskId: number) => {
+				const { sessions, timerInterval } = get()
+				const session = sessions.find(s => s.taskId === taskId)
+				if (!session?.isRunning || !session.currentIntervalStart) return
+			
 				const now = Date.now()
-				const intervalDuration = now - currentSession.currentIntervalStart
-
-				// Clear the interval
-				if (timerInterval) {
-					clearInterval(timerInterval)
-					set({ timerInterval: null })
+				const intervalDuration = now - session.currentIntervalStart
+			
+				// Очистить только таймер для этой задачи
+				if (timerInterval && timerInterval[taskId]) {
+					clearInterval(timerInterval[taskId])
+					// eslint-disable-next-line @typescript-eslint/no-unused-vars
+					const { [taskId]: _, ...rest } = timerInterval
+					set({ timerInterval: rest })
 				}
-
+			
 				set({
-					currentSession: {
-						...currentSession,
-						totalElapsed: currentSession.totalElapsed + intervalDuration,
-						currentIntervalStart: null,
-						isRunning: false,
-					},
+					sessions: sessions.map(s =>
+						s.taskId === taskId
+							? {
+								...s,
+								totalElapsed: s.totalElapsed + intervalDuration,
+								currentIntervalStart: null,
+								isRunning: false,
+							}
+							: s
+					),
 				})
 			},
 
-			finishTimer: () => {
-				const { currentSession, pauseTimer } = get()
-				if (!currentSession) return
+			finishTimer: (taskId: number) => {
+				const { sessions, pauseTimer, markTaskAsFinished } = get()
+				if (!sessions) return
+
+				const session = sessions.find(s => s.taskId === taskId)
+				if (!session) return
 
 				// Calculate final time including current running interval
-				let finalTime = currentSession.totalElapsed
-				if (currentSession.isRunning && currentSession.currentIntervalStart) {
-					finalTime += Date.now() - currentSession.currentIntervalStart
+				let finalTime = session.totalElapsed
+				if (session.isRunning && session.currentIntervalStart) {
+					finalTime += Date.now() - session.currentIntervalStart
 				}
 
 				// Pause if running
-				if (currentSession.isRunning) {
-					pauseTimer()
-				}
+				if (session.isRunning) {
+					pauseTimer(taskId)
+				  }
 
 				set({
+					sessions: sessions.map(session =>
+						session.taskId === taskId
+							? {
+								...session,
+								isRunning: false,
+								currentIntervalStart: null,
+								isFinished: true,
+							}
+							: session
+					),
 					timeLogModal: {
 						isOpen: true,
 						duration: finalTime,
 					},
-				})
+					isFinished: true,
+				  })
+
+				markTaskAsFinished()
 			},
+
+			markTaskAsFinished: () => {
+				const { selectedTask, tasks } = get()
+				if (!selectedTask) return
+
+				const updatedTask: RedmineTask = {
+					...selectedTask,
+					status: {
+						...selectedTask.status,
+						name: "Задача завершена",
+					},
+				}
+
+				set({
+					selectedTask: updatedTask,
+					tasks: tasks.map(task =>
+						task.id === selectedTask.id ? updatedTask : task
+					),
+				})
+			},			
 
 			cleanup: () => {
 				const { timerInterval } = get()
+			  
 				if (timerInterval) {
-					clearInterval(timerInterval)
-					set({ timerInterval: null })
+				  Object.values(timerInterval).forEach(clearInterval)
+				  set({ timerInterval: {} }) // очищаем объект
 				}
-			},
+			  },
 
 			canStartTask: (taskId: number) => {
-				const { currentSession } = get()
-				return !currentSession || currentSession.taskId === taskId || !currentSession.isRunning
+				const { sessions } = get()
+
+				// Проверяем, есть ли уже запущенная сессия с другим taskId
+				const runningSession = Array.isArray(sessions)
+					? sessions.find(s => s.isRunning)
+					: null
+
+				// Разрешить запуск, если:
+				// - нет активных сессий вообще
+				// - либо активная сессия — это та же задача
+				return !runningSession || runningSession.taskId === taskId
 			},
 
 			submitTimeLog: async (data: TimeLogData) => {
@@ -323,7 +379,7 @@ export const useRedmineStore = create<RedmineStore>()(
 
 					if (response.ok) {
 						// Clear current session
-						set({ currentSession: null })
+						set({ sessions: [] })
 					} else {
 						throw new Error("Ошибка отправки лога")
 					}
@@ -336,7 +392,8 @@ export const useRedmineStore = create<RedmineStore>()(
 			closeTimeLogModal: () => {
 				set({
 					timeLogModal: { isOpen: false },
-					currentSession: null,
+					sessions: [],
+					isFinished: false,
 				})
 			},
 		}),
@@ -347,14 +404,15 @@ export const useRedmineStore = create<RedmineStore>()(
 				redmineUrl: state.redmineUrl,
 				apiKey: state.apiKey,
 				isConfigured: state.isConfigured,
-				currentSession: state.currentSession
-					? {
-						...state.currentSession,
-						currentIntervalStart: null, // Don't persist running state
-						isRunning: false, // Always start paused after reload
-					}
-					: null,
-			}),
+				isFinished: state.isFinished,
+				sessions: Array.isArray(state.sessions)
+					? state.sessions.map(session => ({
+						...session,
+						currentIntervalStart: null,
+						isRunning: false,
+					}))
+					: [],
+			}),			
 		},
 	),
 )

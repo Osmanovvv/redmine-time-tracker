@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
     } else {
       return NextResponse.json({ error: "Failed to fetch issues" }, { status: response.status })
     }
+	  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
