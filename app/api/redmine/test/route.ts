@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
     } else {
       return NextResponse.json({ success: false }, { status: 401 })
     }
+	  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   } catch (error) {
     return NextResponse.json({ success: false }, { status: 500 })
   }

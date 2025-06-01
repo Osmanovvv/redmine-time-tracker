@@ -1,13 +1,62 @@
 "use client"
 
+import { useState, useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { useRedmineStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
 import { Clock, Play } from "lucide-react"
+import {
+	Select,
+	SelectTrigger,
+	SelectValue,
+	SelectContent,
+	SelectItem,
+} from "@/components/ui/select"
+
+const PRIORITY_STYLES = {
+	Immediate: {
+		sidebar: "bg-red-700",
+		badge: "bg-red-100 text-red-800 font-bold",
+	},
+	Urgent: {
+		sidebar: "bg-red-500",
+		badge: "bg-red-100 text-red-700",
+	},
+	High: {
+		sidebar: "bg-orange-500",
+		badge: "bg-orange-100 text-orange-700",
+	},
+	Normal: {
+		sidebar: "bg-yellow-400",
+		badge: "bg-yellow-100 text-yellow-700",
+	},
+	Low: {
+		sidebar: "bg-gray-300",
+		badge: "bg-gray-100 text-gray-700",
+	},
+} as const
+
+type PriorityLevel = keyof typeof PRIORITY_STYLES
 
 export function TaskList() {
 	const { tasks, selectedTask, selectTask, sessions, isLoading } = useRedmineStore()
+	const [selectedProjectId, setSelectedProjectId] = useState<string>("all")
+
+	const projects = useMemo(() => {
+		const map = new Map<number, string>()
+		tasks.forEach((task) => {
+			if (task.project) {
+				map.set(task.project.id, task.project.name)
+			}
+		})
+		return Array.from(map.entries())
+	}, [tasks])
+
+	const filteredTasks = useMemo(() => {
+		if (selectedProjectId === "all") return tasks
+		return tasks.filter((task) => task.project.id === Number(selectedProjectId))
+	}, [tasks, selectedProjectId])
 
 	if (isLoading) {
 		return (
@@ -24,18 +73,37 @@ export function TaskList() {
 	return (
 		<div className="p-4 h-full overflow-auto">
 			<h2 className="text-lg font-semibold mb-4">Активные задачи</h2>
+
+			<div className="mb-4 w-64">
+				<Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+					<SelectTrigger>
+						<SelectValue placeholder="Фильтр по проекту" />
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="all">Все проекты</SelectItem>
+						{projects.map(([id, name]) => (
+							<SelectItem key={id} value={String(id)}>
+								{name}
+							</SelectItem>
+						))}
+					</SelectContent>
+				</Select>
+			</div>
+
 			<div className="space-y-3">
-				{tasks.map((task) => {
-					const isRunning = Array.isArray(sessions) && sessions.some(s => s.taskId === task.id)
-					const canRunMore = Array.isArray(sessions) && sessions.length < 3
-					const isSelectable = isRunning || canRunMore
+				{filteredTasks.map((task) => {
+					const isRunning = sessions.some((s) => s.taskId === task.id)
+					const isSelectable = isRunning || sessions.length < 3
+					const priority = (task.priority?.name ?? "Normal") as PriorityLevel
 
 					return (
 						<Card
 							key={task.id}
 							className={cn(
-								"transition-colors",
-								isSelectable ? "cursor-pointer hover:bg-muted/50" : "opacity-50 cursor-not-allowed",
+								"relative transition-colors pl-2",
+								isSelectable
+									? "cursor-pointer hover:bg-muted/50"
+									: "opacity-50 cursor-not-allowed",
 								selectedTask?.id === task.id && "ring-2 ring-primary",
 								isRunning && "bg-green-50 border-green-200"
 							)}
@@ -45,6 +113,13 @@ export function TaskList() {
 								}
 							}}
 						>
+							{/* Боковая цветная полоска по приоритету */}
+							<div
+								className={cn(
+									"absolute left-0 top-0 bottom-0 w-1 rounded-l",
+									PRIORITY_STYLES[priority].sidebar
+								)}
+							/>
 							<CardContent className="p-4">
 								<div className="flex items-start justify-between gap-2">
 									<div className="flex-1 min-w-0">
@@ -57,11 +132,23 @@ export function TaskList() {
 												</div>
 											)}
 										</div>
-										<h3 className="font-medium text-sm leading-tight line-clamp-2">{task.subject}</h3>
+										<div className="mb-1">
+											<Badge className={cn("text-xs", PRIORITY_STYLES[priority].badge)}>
+												{priority}
+											</Badge>
+										</div>
+										<h3 className="font-medium text-sm leading-tight line-clamp-2">
+											{task.subject}
+										</h3>
 									</div>
-									<Badge variant={task.status.name === "In Progress" ? "default" : "secondary"} className="text-xs">
-										{task.status.name}
-									</Badge>
+									<div>
+										<Badge
+											variant={task.status.name === "In Progress" ? "default" : "secondary"}
+											className="text-xs"
+										>
+											{task.status.name}
+										</Badge>
+									</div>
 								</div>
 							</CardContent>
 						</Card>

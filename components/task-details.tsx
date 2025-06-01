@@ -8,7 +8,7 @@ import { Play, Pause, Square, Clock, User, Calendar } from "lucide-react"
 import { formatTime, getCurrentElapsed } from "@/lib/utils"
 
 export function TaskDetails() {
-	const { selectedTask, currentSession, startTimer, pauseTimer, finishTimer, canStartTask } = useRedmineStore()
+	const { selectedTask, sessions, startTimer, pauseTimer, finishTimer, canStartTask } = useRedmineStore()
 
 	if (!selectedTask) {
 		return (
@@ -21,8 +21,8 @@ export function TaskDetails() {
 		)
 	}
 
-	const isCurrentTask = Array.isArray(currentSession)
-		? currentSession.find(s => s.taskId === selectedTask.id)
+	const isCurrentTask = Array.isArray(sessions)
+		? sessions.find(s => s.taskId === selectedTask.id)
 		: null;
 	const isRunning = isCurrentTask?.isRunning ?? false
 
@@ -36,7 +36,7 @@ export function TaskDetails() {
 
 	return (
 		<div className="p-6 h-full overflow-auto">
-			<div className="max-w-2xl">
+			<div className="w-full">
 				<div className="mb-6">
 					<div className="flex items-start justify-between gap-4 mb-4">
 						<div>
@@ -60,35 +60,30 @@ export function TaskDetails() {
 							<span>Создано: {new Date(selectedTask.created_on).toLocaleDateString()}</span>
 							<Calendar className="w-4 h-4" />
 							<span>Обновлено: {new Date(selectedTask.updated_on).toLocaleDateString()}</span>
-							{/* <Calendar className="w-4 h-4" /> */}
 						</div>
-						<div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-sm">
-							<div className="bg-card border rounded-xl p-4 shadow-sm text-center">
-								<div className="flex items-center mb-1 text-muted-foreground">
-									{/* <Clock className="w-4 h-4 text-primary " /> */}
-									<span className="font-semibold text-primary">Оценка</span>
+						<div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6		">
+							<div className="flex flex-col items-center bg-muted/40 rounded-xl p-4 text-center shadow">
+								<div className="flex items-center gap-2 text-muted-foreground mb-1">
+									<Clock className="w-4 h-4 text-primary" />
+									<span className="text-sm font-medium text-primary">Оценка</span>
 								</div>
-								<div className="text-base font-medium text-center">
-									{selectedTask.estimated_hours ?? "—"} ч.
-								</div>
+								<div className="text-lg font-semibold">{selectedTask.estimated_hours ?? "—"} ч.</div>
 							</div>
-							<div className="bg-card border rounded-xl p-4 shadow-sm">
-								<div className="flex items-center mb-1 text-muted-foreground">
-									<Square className="w-4 h-4 text-primary" />
-									<span className="font-semibold text-primary">Готовность</span>
+
+							<div className="flex flex-col items-center bg-muted/40 rounded-xl p-4 text-center shadow">
+								<div className="flex items-center gap-2 text-muted-foreground mb-1">
+									<Square className="w-4 h-4 text-yellow-500" />
+									<span className="text-sm font-medium text-yellow-600">Готовность</span>
 								</div>
-								<div className="text-base font-medium text-center">
-									{selectedTask.done_ratio}%
-								</div>
+								<div className="text-lg font-semibold">{selectedTask.done_ratio ?? 0}%</div>
 							</div>
-							<div className="bg-card border rounded-xl p-4 shadow-sm">
-								<div className="flex items-center mb-1 text-muted-foreground">
-									<User className="w-4 h-4 text-primary" />
-									<span className="font-semibold text-primary">Приоритет</span>
+
+							<div className="flex flex-col items-center bg-muted/40 rounded-xl p-4 text-center shadow">
+								<div className="flex items-center gap-2 text-muted-foreground mb-1">
+									<User className="w-4 h-4 text-rose-500" />
+									<span className="text-sm font-medium text-rose-600">Приоритет</span>
 								</div>
-								<div className="text-base font-medium text-center">
-									{selectedTask.priority?.name ?? "—"}
-								</div>
+								<div className="text-lg font-semibold">{selectedTask.priority?.name ?? "—"}</div>
 							</div>
 						</div>
 					</div>

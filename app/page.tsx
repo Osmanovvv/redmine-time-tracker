@@ -6,15 +6,17 @@ import { SettingsPage } from "@/components/settings-page"
 import { MainInterface } from "@/components/main-interface"
 
 export default function HomePage() {
-	const { isConfigured, loadConfig } = useRedmineStore()
+	const isConfigured = useRedmineStore(s => s.isConfigured)
+	const hasHydrated = useRedmineStore(s => s.hasHydrated)
+	const loadConfig = useRedmineStore(s => s.loadConfig)
 
 	useEffect(() => {
 		loadConfig()
 	}, [loadConfig])
 
-	if (!isConfigured) {
-		return <SettingsPage />
-	}
+	// 💥 Ключевой момент: ничего не рендерим, пока стор не загружен
+	if (!hasHydrated) return null
 
+	if (!isConfigured) return <SettingsPage />
 	return <MainInterface />
 }
