@@ -26,10 +26,10 @@ export interface TimeSession {
 export function getCurrentElapsed(session: TimeSession | null): number {
 	if (!session) return 0
 
-	let elapsed = session.totalElapsed
+	let elapsed = session.totalElapsed // должно быть в **секундах**
 
 	if (session.isRunning && session.currentIntervalStart) {
-		elapsed += Date.now() - session.currentIntervalStart
+		elapsed += Math.floor((Date.now() - session.currentIntervalStart) / 1000)
 	}
 
 	return elapsed

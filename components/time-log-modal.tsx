@@ -18,11 +18,12 @@ import { useRedmineStore } from "@/lib/store"
 import { Clock, Send } from "lucide-react"
 
 export function TimeLogModal() {
-	const { timeLogModal, closeTimeLogModal, submitTimeLog, selectedTask, activities, loadActivities } = useRedmineStore()
+	const { timeLogModal, closeTimeLogModal, submitTimeLog, selectedTask, activities, loadActivities, statuses, loadStatuses } = useRedmineStore()
 	
 	const [hoursInput, setHoursInput] = useState("")
 	const [comments, setComments] = useState("")
 	const [activityId, setActivityId] = useState("")
+	const [statusId, setStatusId] = useState("")
 	const [isSubmitting, setIsSubmitting] = useState(false)
 
 	useEffect(() => {
@@ -35,9 +36,11 @@ export function TimeLogModal() {
 			setHoursInput(finalHours.toFixed(1))
 			setComments("")
 			setActivityId("")
+			setStatusId("")
 			loadActivities()
+			loadStatuses()
 		}
-	}, [timeLogModal.isOpen, timeLogModal.duration, loadActivities])
+	}, [timeLogModal.isOpen, timeLogModal.duration, loadActivities, loadStatuses])
 
 	function parseHours(input: string): number {
 		const regex = /(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?/i
@@ -67,6 +70,7 @@ export function TimeLogModal() {
 				comments: comments.trim(),
 				spentOn: new Date().toISOString().split("T")[0],
 				activityId: Number.parseInt(activityId),
+				statusId: Number.parseInt(statusId),
 			})
 			closeTimeLogModal()
 		} catch (error) {
@@ -81,7 +85,7 @@ export function TimeLogModal() {
 			<DialogContent className="sm:max-w-md">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
-						<Clock className="w-5 h-5" />
+						<Clock className="w-5 h-5"/>
 						Завершение сессии
 					</DialogTitle>
 					<DialogDescription>
@@ -101,10 +105,11 @@ export function TimeLogModal() {
 						/>
 					</div>
 
-						<div className="space-y-2">
+					<div className="flex gap-4">
+						<div className="flex-1 space-y-2">
 							<Label htmlFor="activity">Тип активности *</Label>
 							<Select value={activityId} onValueChange={setActivityId}>
-								<SelectTrigger>
+								<SelectTrigger >
 									<SelectValue placeholder="Выберите тип активности" />
 								</SelectTrigger>
 								<SelectContent>
@@ -113,9 +118,27 @@ export function TimeLogModal() {
 											{activity.name}
 										</SelectItem>
 									))}
-							</SelectContent>
-						</Select>
+								</SelectContent>
+							</Select>
+						</div>
+
+						<div className="flex-1 space-y-2">
+							<Label htmlFor="status">Статус</Label>
+							<Select value={statusId} onValueChange={setStatusId}>
+								<SelectTrigger id="status">
+									<SelectValue placeholder="Выберите статус" />
+								</SelectTrigger>
+								<SelectContent>
+									{statuses.map((status) => (
+										<SelectItem key={status.id} value={status.id.toString()}>
+											{status.name}
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</div>
 					</div>
+
 
 					<div className="space-y-2">
 						<Label htmlFor="comments">Описание работы</Label>

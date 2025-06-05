@@ -13,6 +13,8 @@ import {
 	SelectContent,
 	SelectItem,
 } from "@/components/ui/select"
+import { Progress } from "@/components/ui/progress"
+// import { getCurrentElapsed } from "@/lib/utils"
 
 const PRIORITY_STYLES = {
 	Immediate: {
@@ -40,7 +42,7 @@ const PRIORITY_STYLES = {
 type PriorityLevel = keyof typeof PRIORITY_STYLES
 
 export function TaskList() {
-	const { tasks, selectedTask, selectTask, sessions, isLoading } = useRedmineStore()
+	const { tasks, selectedTask, selectTask, sessions, isLoading, getProgressPercentage, getElapsedSeconds } = useRedmineStore()
 	const [selectedProjectId, setSelectedProjectId] = useState<string>("all")
 
 	const projects = useMemo(() => {
@@ -55,7 +57,7 @@ export function TaskList() {
 
 	const filteredTasks = useMemo(() => {
 		if (selectedProjectId === "all") return tasks
-		return tasks.filter((task) => task.project.id === Number(selectedProjectId))
+		return tasks.filter((task) => task.project?.id === Number(selectedProjectId))
 	}, [tasks, selectedProjectId])
 
 	if (isLoading) {
@@ -96,14 +98,17 @@ export function TaskList() {
 					const isSelectable = isRunning || sessions.length < 3
 					const priority = (task.priority?.name ?? "Normal") as PriorityLevel
 
+					// Получаем прогресс для задачи
+					const progressPercentage = getProgressPercentage(task.id, task.estimated_hours)
+					const elapsedSeconds = getElapsedSeconds(task.id)
+					const elapsedHours = Math.round((elapsedSeconds / 3600) * 10) / 10
+
 					return (
 						<Card
 							key={task.id}
 							className={cn(
 								"relative transition-colors pl-2",
-								isSelectable
-									? "cursor-pointer hover:bg-muted/50"
-									: "opacity-50 cursor-not-allowed",
+								isSelectable ? "cursor-pointer hover:bg-muted/50" : "opacity-50 cursor-not-allowed",
 								selectedTask?.id === task.id && "ring-2 ring-primary",
 								isRunning && "bg-green-50 border-green-200"
 							)}
@@ -113,12 +118,8 @@ export function TaskList() {
 								}
 							}}
 						>
-							{/* Боковая цветная полоска по приоритету */}
 							<div
-								className={cn(
-									"absolute left-0 top-0 bottom-0 w-1 rounded-l",
-									PRIORITY_STYLES[priority].sidebar
-								)}
+								className={cn("absolute left-0 top-0 bottom-0 w-1 rounded-l", PRIORITY_STYLES[priority].sidebar)}
 							/>
 							<CardContent className="p-4">
 								<div className="flex items-start justify-between gap-2">
@@ -140,6 +141,16 @@ export function TaskList() {
 										<h3 className="font-medium text-sm leading-tight line-clamp-2">
 											{task.subject}
 										</h3>
+										<div className="mt-2">
+											<div className="flex justify-between text-xs text-muted-foreground mb-1">
+												<span>
+													{elapsedHours}ч / {task.estimated_hours}ч
+												</span>
+												<span>{progressPercentage}%</span>
+											</div>
+											<Progress value={progressPercentage} className="h-1.5" />
+										</div>
+
 									</div>
 									<div>
 										<Badge

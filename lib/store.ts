@@ -45,9 +45,14 @@ export interface TimeLogData {
 	comments: string
 	spentOn: string
 	activityId: number
+	statusId: number
+}
+export interface Activity {
+	id: number
+	name: string
 }
 
-export interface Activity {
+export interface Status {
 	id: number
 	name: string
 }
@@ -62,10 +67,11 @@ interface RedmineStore {
 	tasks: RedmineTask[]
 	selectedTask: RedmineTask | null
 	isLoading: boolean
-	// isFinished: boolean,
 
 	// Activities
 	activities: Activity[]
+
+	statuses: Status[]
 
 	// Time tracking
 	sessions: TimeSession[],
@@ -90,14 +96,18 @@ interface RedmineStore {
 	testConnection: (url: string, apiKey: string) => Promise<boolean>
 	loadTasks: () => Promise<void>
 	loadActivities: () => Promise<void>
+	loadStatuses: () => Promise<void>
 	selectTask: (task: RedmineTask) => void
 	startTimer: (taskId: number) => void
 	pauseTimer: (taskId: number) => void
 	finishTimer: (taskId: number) => void
-	// markTaskAsFinished: () => void
 	canStartTask: (taskId: number) => boolean
 	submitTimeLog: (data: TimeLogData) => Promise<void>
 	closeTimeLogModal: () => void
+
+	// Progress calculation helpers
+	getElapsedSeconds: (taskId: number) => number
+	getProgressPercentage: (taskId: number, estimatedHours?: number) => number
 
 	// Add cleanup action
 	cleanup: () => void
@@ -114,6 +124,7 @@ export const useRedmineStore = create<RedmineStore>()(
 			selectedTask: null,
 			isLoading: false,
 			activities: [],
+			statuses: [],
 			sessions: [],
 			timeLogModal: { isOpen: false },
 			timerInterval: {},
@@ -212,6 +223,27 @@ export const useRedmineStore = create<RedmineStore>()(
 					}
 				} catch (error) {
 					console.error("Ошибка загрузки активностей:", error)
+				}
+			},
+
+			// Activities actions
+			loadStatuses: async () => {
+				const { redmineUrl, apiKey } = get()
+				if (!redmineUrl || !apiKey) return
+
+				try {
+					const response = await fetch("/api/redmine/statuses", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ url: redmineUrl, apiKey }),
+					})
+
+					if (response.ok) {
+						const data = await response.json()
+						set({ statuses: data.issue_statuses || [] })
+					}					
+				} catch (error) {
+					console.error("Ошибка загрузки статусов:", error)
 				}
 			},
 
@@ -359,31 +391,9 @@ export const useRedmineStore = create<RedmineStore>()(
 						isOpen: true,
 						duration: finalTime,
 					},
-					// isFinished: true,
 				})
-
-				// markTaskAsFinished()
 			},
 
-			// markTaskAsFinished: () => {
-			// 	const { selectedTask, tasks } = get()
-			// 	if (!selectedTask) return
-
-			// 	const updatedTask: RedmineTask = {
-			// 		...selectedTask,
-			// 		status: {
-			// 			...selectedTask.status,
-			// 			name: "Задача завершена",
-			// 		},
-			// 	}
-
-			// 	set({
-			// 		selectedTask: updatedTask,
-			// 		tasks: tasks.map(task =>
-			// 			task.id === selectedTask.id ? updatedTask : task
-			// 		),
-			// 	})
-			// },
 
 			cleanup: () => {
 				const { timerInterval } = get()
@@ -408,6 +418,33 @@ export const useRedmineStore = create<RedmineStore>()(
 				return !runningSession || runningSession.taskId === taskId
 			},
 
+			// Progress calculation helpers
+			getElapsedSeconds: (taskId: number) => {
+				const { sessions } = get()
+				const session = sessions.find((s) => s.taskId === taskId)
+
+				if (!session) return 0
+
+				let elapsed = session.totalElapsed
+
+				// Если сессия активна, добавляем текущий интервал
+				if (session.isRunning && session.currentIntervalStart) {
+					elapsed += Date.now() - session.currentIntervalStart
+				}
+
+				// Конвертируем из миллисекунд в секунды
+				return Math.floor(elapsed / 1000)
+			},
+
+			getProgressPercentage: (taskId: number, estimatedHours?: number) => {
+				if (!estimatedHours || estimatedHours <= 0) return 0
+
+				const elapsedSeconds = get().getElapsedSeconds(taskId)
+				const totalSeconds = estimatedHours * 3600
+
+				return Math.min(Math.round((elapsedSeconds / totalSeconds) * 100), 100)
+			},
+
 			submitTimeLog: async (data: TimeLogData) => {
 				const { redmineUrl, apiKey } = get()
 
@@ -424,6 +461,7 @@ export const useRedmineStore = create<RedmineStore>()(
 								comments: data.comments,
 								spent_on: data.spentOn,
 								activity_id: data.activityId,
+								status_id: data.statusId
 							},
 						}),
 					})
@@ -443,8 +481,6 @@ export const useRedmineStore = create<RedmineStore>()(
 			closeTimeLogModal: () => {
 				set({
 					timeLogModal: { isOpen: false },
-					// sessions: [],
-					// isFinished: false,
 				})
 			},
 		}),
