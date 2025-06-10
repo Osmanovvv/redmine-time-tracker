@@ -98,6 +98,7 @@ interface RedmineStore {
 	// User roles
 	userRoles: Role[]
 	userRole: UserRole
+	currentUserId: number | null
 
 	// Time tracking
 	sessions: TimeSession[],
@@ -123,6 +124,7 @@ interface RedmineStore {
 	loadActivities: () => Promise<void>
 	loadStatuses: () => Promise<void>
 	loadUserRoles: (projectId: number) => Promise<void>
+	loadCurrentUser: () => Promise<void>
 	selectTask: (task: RedmineTask) => void
 	startTimer: (taskId: number) => void
 	pauseTimer: (taskId: number) => void
@@ -160,6 +162,7 @@ export const useRedmineStore = create<RedmineStore>()(
 			statuses: [],
 			userRoles: [],
 			userRole: "Other",
+			currentUserId: null,
 			sessions: [],
 			timeLogModal: { isOpen: false },
 			timerInterval: {},
@@ -189,6 +192,7 @@ export const useRedmineStore = create<RedmineStore>()(
 					sessions: [],
 					userRoles: [],
 					userRole: "Other",
+					currentUserId: null,
 				})
 			},
 
@@ -218,13 +222,37 @@ export const useRedmineStore = create<RedmineStore>()(
 				}
 			},
 
+			// Загрузка информации о текущем пользователе
+			loadCurrentUser: async () => {
+				const { redmineUrl, apiKey } = get()
+				if (!redmineUrl || !apiKey) return
+
+				try {
+					const response = await fetch("/api/redmine/current-user", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ url: redmineUrl, apiKey }),
+					})
+
+					if (response.ok) {
+						const data = await response.json()
+						set({ currentUserId: data.user?.id })
+					}
+				} catch (error) {
+					console.error("Ошибка загрузки текущего пользователя:", error)
+				}
+			},
+
 			// Tasks actions
 			loadTasks: async () => {
-				const { redmineUrl, apiKey } = get()
+				const { redmineUrl, apiKey, loadCurrentUser } = get()
 				if (!redmineUrl || !apiKey) return
 
 				set({ isLoading: true })
 				try {
+					// Загружаем информацию о текущем пользователе
+					await loadCurrentUser()
+
 					const response = await fetch("/api/redmine/issues", {
 						method: "POST",
 						headers: { "Content-Type": "application/json" },
@@ -233,7 +261,15 @@ export const useRedmineStore = create<RedmineStore>()(
 
 					if (response.ok) {
 						const data = await response.json()
-						set({ tasks: data.issues || [] })
+						// set({ tasks: data.issues || [] })
+						const tasks = data.issues || []
+						set({ tasks })
+
+						// Если есть задачи, загружаем роли для первого проекта
+						if (tasks.length > 0 && tasks[0].project?.id) {
+							const { loadUserRoles } = get()
+							await loadUserRoles(tasks[0].project.id)
+						}
 					}
 				} catch (error) {
 					console.error("Ошибка загрузки задач:", error)
@@ -286,7 +322,7 @@ export const useRedmineStore = create<RedmineStore>()(
 
 			// User roles actions
 			loadUserRoles: async (projectId: number) => {
-				const { redmineUrl, apiKey, determineUserRole } = get()
+				const { redmineUrl, apiKey, currentUserId, determineUserRole } = get()
 				if (!redmineUrl || !apiKey) return
 
 				try {
@@ -300,9 +336,16 @@ export const useRedmineStore = create<RedmineStore>()(
 						const data = await response.json()
 						const memberships: Membership[] = data.memberships || []
 
-						// Находим текущего пользователя (предполагаем, что это первый в списке или по другой логике)
-						// В реальном приложении нужно будет получить ID текущего пользователя
-						const currentUserMembership = memberships[0] // Упрощение для примера
+						// Находим текущего пользователя по ID
+						let currentUserMembership = null
+						if (currentUserId) {
+							currentUserMembership = memberships.find((membership) => membership.user.id === currentUserId)
+						}
+
+						// Если не нашли по ID, берем первого (fallback)
+						if (!currentUserMembership && memberships.length > 0) {
+							currentUserMembership = memberships[0]
+						}
 
 						if (currentUserMembership) {
 							const roles = currentUserMembership.roles
@@ -311,6 +354,13 @@ export const useRedmineStore = create<RedmineStore>()(
 							set({
 								userRoles: roles,
 								userRole,
+							})
+
+							console.log("Загружены роли пользователя:", {
+								userId: currentUserMembership.user.id,
+								userName: currentUserMembership.user.name,
+								roles: roles.map((r) => r.name),
+								determinedRole: userRole,
 							})
 						}
 					}
@@ -322,6 +372,8 @@ export const useRedmineStore = create<RedmineStore>()(
 			// Определение роли пользователя
 			determineUserRole: (roles: Role[]): UserRole => {
 				const roleNames = roles.map((role) => role.name)
+
+				console.log("Определение роли для:", roleNames)
 
 				if (roleNames.includes("Manager")) {
 					return "Manager"
@@ -403,7 +455,7 @@ export const useRedmineStore = create<RedmineStore>()(
 				const { loadUserRoles } = get()
 				set({ selectedTask: task })
 
-				// Загружаем роли пользователя для проекта задачи
+				// Загружаем роли пользователя для проекта задачи (если проект изменился)
 				if (task.project?.id) {
 					loadUserRoles(task.project.id)
 				}
@@ -649,7 +701,7 @@ export const useRedmineStore = create<RedmineStore>()(
 				redmineUrl: state.redmineUrl,
 				apiKey: state.apiKey,
 				isConfigured: state.isConfigured,
-				// isFinished: state.isFinished,
+				currentUserId: state.currentUserId, // Сохраняем ID пользователя
 				sessions: Array.isArray(state.sessions)
 					? state.sessions.map(session => ({
 						...session,
