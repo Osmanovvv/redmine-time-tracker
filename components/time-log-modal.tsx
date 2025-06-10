@@ -14,17 +14,33 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
 import { useRedmineStore } from "@/lib/store"
-import { Clock, Send } from "lucide-react"
+import { Clock, Send, Shield, Lock } from "lucide-react"
 
 export function TimeLogModal() {
-	const { timeLogModal, closeTimeLogModal, submitTimeLog, selectedTask, activities, loadActivities, statuses, loadStatuses } = useRedmineStore()
-	
+	const {
+		timeLogModal,
+		closeTimeLogModal,
+		submitTimeLog,
+		selectedTask,
+		activities,
+		loadActivities,
+		loadStatuses,
+		getFilteredStatuses,
+		userRole,
+		canChangeStatus,
+	} = useRedmineStore()
+
 	const [hoursInput, setHoursInput] = useState("")
 	const [comments, setComments] = useState("")
 	const [activityId, setActivityId] = useState("")
 	const [statusId, setStatusId] = useState("")
 	const [isSubmitting, setIsSubmitting] = useState(false)
+
+	// Получаем отфильтрованные статусы для текущей задачи
+	const filteredStatuses = selectedTask ? getFilteredStatuses(selectedTask.status.name) : []
+	const canChangeTaskStatus = selectedTask ? canChangeStatus(selectedTask.status.name, userRole) : false
 
 	useEffect(() => {
 		if (timeLogModal.isOpen && timeLogModal.duration) {
@@ -80,16 +96,55 @@ export function TimeLogModal() {
 		}
 	}
 
+	const getRoleBadgeVariant = (role: string) => {
+		switch (role) {
+			case "Manager":
+				return "default"
+			case "Developer":
+				return "secondary"
+			default:
+				return "outline"
+		}
+	}
+
+	const getStatusChangeMessage = () => {
+		if (!selectedTask) return ""
+
+		const currentStatus = selectedTask.status.name.toLowerCase()
+
+		if (userRole === "Developer") {
+			switch (currentStatus) {
+				case "new":
+					return "Статус 'New' нельзя изменить"
+				case "to review":
+					return "Можно изменить только на 'On merge'"
+				default:
+					return "Доступны статусы: New, To Review, On merge"
+			}
+		}
+
+		if (userRole === "Manager") {
+			return "Доступны все статусы"
+		}
+
+		return "Нет прав для изменения статуса"
+	}
+
 	return (
 		<Dialog open={timeLogModal.isOpen} onOpenChange={closeTimeLogModal}>
 			<DialogContent className="sm:max-w-md">
 				<DialogHeader>
 					<DialogTitle className="flex items-center gap-2">
-						<Clock className="w-5 h-5"/>
+						<Clock className="w-5 h-5" />
 						Завершение сессии
 					</DialogTitle>
 					<DialogDescription>
 						Отправить лог времени в Redmine для задачи #{selectedTask?.id}
+						<span className="flex items-center gap-2 mt-2">
+							<Badge variant={getRoleBadgeVariant(userRole)} className="text-xs">
+								{userRole}
+							</Badge>
+						</span>
 					</DialogDescription>
 				</DialogHeader>
 
@@ -109,7 +164,7 @@ export function TimeLogModal() {
 						<div className="flex-1 space-y-2">
 							<Label htmlFor="activity">Тип активности *</Label>
 							<Select value={activityId} onValueChange={setActivityId}>
-								<SelectTrigger >
+								<SelectTrigger id="activity">
 									<SelectValue placeholder="Выберите тип активности" />
 								</SelectTrigger>
 								<SelectContent>
@@ -123,13 +178,25 @@ export function TimeLogModal() {
 						</div>
 
 						<div className="flex-1 space-y-2">
-							<Label htmlFor="status">Статус</Label>
-							<Select value={statusId} onValueChange={setStatusId}>
+							<Label htmlFor="status" className="flex items-center gap-2">
+								Статус
+								{!canChangeTaskStatus && <Lock className="w-3 h-3 text-muted-foreground" />}
+							</Label>
+							<Select value={statusId} onValueChange={setStatusId} disabled={!canChangeTaskStatus}>
 								<SelectTrigger id="status">
-									<SelectValue placeholder="Выберите статус" />
+									<SelectValue
+										placeholder={
+											!canChangeTaskStatus
+												? "New"
+												: filteredStatuses.length === 0
+													? "Нет доступных статусов"
+													: "Изменить статус"
+										}
+									/>
 								</SelectTrigger>
 								<SelectContent>
-									{statuses.map((status) => (
+									<SelectItem value="none">Не изменять</SelectItem>
+									{filteredStatuses.map((status) => (
 										<SelectItem key={status.id} value={status.id.toString()}>
 											{status.name}
 										</SelectItem>
@@ -139,6 +206,14 @@ export function TimeLogModal() {
 						</div>
 					</div>
 
+					{userRole === "Other" && (
+						<div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-md border border-amber-200">
+							<div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded-md">
+								<Shield className="w-3 h-3" />
+								<span>{getStatusChangeMessage()}</span>
+							</div>
+						</div>
+					)}
 
 					<div className="space-y-2">
 						<Label htmlFor="comments">Описание работы</Label>

@@ -1,24 +1,24 @@
 import { type NextRequest, NextResponse } from "next/server"
 
 export async function POST(request: NextRequest) {
-  try {
-	const { url, apiKey } = await request.json()
+	try {
+		const { url, apiKey } = await request.json()
 
-	  const response = await fetch(`${url}/issue_statuses.json`, {
-	  headers: {
-		"X-Redmine-API-Key": apiKey,
-		"Content-Type": "application/json",
-	  },
-	})
+		const response = await fetch(`${url}/issue_statuses.json`, {
+			headers: {
+				"X-Redmine-API-Key": apiKey,
+				"Content-Type": "application/json",
+			},
+		})
 
-	if (response.ok) {
-	  const data = await response.json()
-	  return NextResponse.json(data)
-	} else {
-	  return NextResponse.json({ error: "Failed to fetch statuses" }, { status: response.status })
+		if (response.ok) {
+			const data = await response.json()
+			return NextResponse.json(data)
+		} else {
+			return NextResponse.json({ error: "Failed to fetch statuses" }, { status: response.status })
+		}
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	} catch (error) {
+		return NextResponse.json({ error: "Internal server error" }, { status: 500 })
 	}
-	  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  } catch (error) {
-	return NextResponse.json({ error: "Internal server error" }, { status: 500 })
-  }
 }

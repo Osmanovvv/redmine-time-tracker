@@ -55,7 +55,29 @@ export interface Activity {
 export interface Status {
 	id: number
 	name: string
+	allowedTransitions?: string[]
 }
+
+export interface Role {
+	id: number
+	name: string
+}
+
+export interface Membership {
+	id: number
+	project: {
+		id: number
+		name: string
+	}
+	user: {
+		id: number
+		name: string
+	}
+	roles: Role[]
+}
+
+// Типы ролей для фильтрации
+export type UserRole = "Manager" | "Developer" | "Other"
 
 interface RedmineStore {
 	// Configuration
@@ -73,9 +95,12 @@ interface RedmineStore {
 
 	statuses: Status[]
 
+	// User roles
+	userRoles: Role[]
+	userRole: UserRole
+
 	// Time tracking
 	sessions: TimeSession[],
-
 
 	// Modal
 	timeLogModal: {
@@ -97,6 +122,7 @@ interface RedmineStore {
 	loadTasks: () => Promise<void>
 	loadActivities: () => Promise<void>
 	loadStatuses: () => Promise<void>
+	loadUserRoles: (projectId: number) => Promise<void>
 	selectTask: (task: RedmineTask) => void
 	startTimer: (taskId: number) => void
 	pauseTimer: (taskId: number) => void
@@ -105,6 +131,11 @@ interface RedmineStore {
 	submitTimeLog: (data: TimeLogData) => Promise<void>
 	closeTimeLogModal: () => void
 
+	// Role-based filtering
+	getFilteredStatuses: (currentStatusName: string) => Status[]
+	determineUserRole: (roles: Role[]) => UserRole
+	canChangeStatus: (currentStatusName: string, userRole: UserRole) => boolean
+
 	// Progress calculation helpers
 	getElapsedSeconds: (taskId: number) => number
 	getProgressPercentage: (taskId: number, estimatedHours?: number) => number
@@ -112,6 +143,8 @@ interface RedmineStore {
 	// Add cleanup action
 	cleanup: () => void
 }
+
+
 
 export const useRedmineStore = create<RedmineStore>()(
 	persist(
@@ -125,6 +158,8 @@ export const useRedmineStore = create<RedmineStore>()(
 			isLoading: false,
 			activities: [],
 			statuses: [],
+			userRoles: [],
+			userRole: "Other",
 			sessions: [],
 			timeLogModal: { isOpen: false },
 			timerInterval: {},
@@ -152,6 +187,8 @@ export const useRedmineStore = create<RedmineStore>()(
 					tasks: [],
 					selectedTask: null,
 					sessions: [],
+					userRoles: [],
+					userRole: "Other",
 				})
 			},
 
@@ -226,7 +263,7 @@ export const useRedmineStore = create<RedmineStore>()(
 				}
 			},
 
-			// Activities actions
+			// Statuses actions
 			loadStatuses: async () => {
 				const { redmineUrl, apiKey } = get()
 				if (!redmineUrl || !apiKey) return
@@ -241,14 +278,135 @@ export const useRedmineStore = create<RedmineStore>()(
 					if (response.ok) {
 						const data = await response.json()
 						set({ statuses: data.issue_statuses || [] })
-					}					
+					}
 				} catch (error) {
 					console.error("Ошибка загрузки статусов:", error)
 				}
 			},
 
+			// User roles actions
+			loadUserRoles: async (projectId: number) => {
+				const { redmineUrl, apiKey, determineUserRole } = get()
+				if (!redmineUrl || !apiKey) return
+
+				try {
+					const response = await fetch("/api/redmine/memberships", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({ url: redmineUrl, apiKey, projectId }),
+					})
+
+					if (response.ok) {
+						const data = await response.json()
+						const memberships: Membership[] = data.memberships || []
+
+						// Находим текущего пользователя (предполагаем, что это первый в списке или по другой логике)
+						// В реальном приложении нужно будет получить ID текущего пользователя
+						const currentUserMembership = memberships[0] // Упрощение для примера
+
+						if (currentUserMembership) {
+							const roles = currentUserMembership.roles
+							const userRole = determineUserRole(roles)
+
+							set({
+								userRoles: roles,
+								userRole,
+							})
+						}
+					}
+				} catch (error) {
+					console.error("Ошибка загрузки ролей пользователя:", error)
+				}
+			},
+
+			// Определение роли пользователя
+			determineUserRole: (roles: Role[]): UserRole => {
+				const roleNames = roles.map((role) => role.name)
+
+				if (roleNames.includes("Manager")) {
+					return "Manager"
+				} else if (roleNames.includes("Developer")) {
+					return "Developer"
+				} else {
+					return "Other"
+				}
+			},
+
+			// Проверка возможности изменения статуса
+			canChangeStatus: (currentStatusName: string, userRole: UserRole): boolean => {
+				// Менеджер может изменять любые статусы
+				if (userRole === "Manager") {
+					return true
+				}
+
+				// Разработчик может изменять статусы согласно правилам
+				if (userRole === "Developer") {
+					switch (currentStatusName.toLowerCase()) {
+						case "new":
+							// Если статус New - изменять нельзя
+							return false
+						case "to review":
+							// Если статус To Review - можно изменить
+							return true
+						default:
+							// Остальные статусы - можно изменять
+							return true
+					}
+				}
+
+				// Остальные роли не могут изменять статусы
+				return false
+			},
+
+			// Фильтрация статусов по роли и текущему статусу
+			getFilteredStatuses: (currentStatusName: string): Status[] => {
+				const { statuses, userRole, canChangeStatus } = get()
+
+				// Проверяем, может ли пользователь изменять статус
+				if (!canChangeStatus(currentStatusName, userRole)) {
+					return []
+				}
+
+				switch (userRole) {
+					case "Manager":
+						// Менеджер видит все статусы, кроме текущего
+						return statuses.filter((status) => status.name.toLowerCase() !== currentStatusName.toLowerCase())
+
+					case "Developer":
+						switch (currentStatusName.toLowerCase()) {
+							case "new":
+								// Если статус New - нет доступных статусов для изменения
+								return []
+
+							case "to review":
+								// Если статус To Review - можно только на On merge
+								return statuses.filter((status) => status.name.toLowerCase() === "on merge")
+
+							default:
+								// Для остальных статусов - показываем разрешенные статусы
+								const allowedStatusNames = ["new", "to review", "on merge"]
+								return statuses.filter(
+									(status) =>
+										allowedStatusNames.includes(status.name.toLowerCase()) &&
+										status.name.toLowerCase() !== currentStatusName.toLowerCase(),
+								)
+						}
+
+					case "Other":
+					default:
+						// Остальные роли не видят статусы
+						return []
+				}
+			},
+
 			selectTask: (task: RedmineTask) => {
+				const { loadUserRoles } = get()
 				set({ selectedTask: task })
+
+				// Загружаем роли пользователя для проекта задачи
+				if (task.project?.id) {
+					loadUserRoles(task.project.id)
+				}
 			},
 
 			// Timer actions

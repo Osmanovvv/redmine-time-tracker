@@ -76,6 +76,7 @@ export function TaskDetails() {
 									<span className="text-sm font-medium text-yellow-600">Готовность</span>
 								</div>
 								<div className="text-lg font-semibold">{selectedTask.done_ratio ?? 0}%</div>
+								{/* <span className="w-[50px] text-right">{progressPercentage}%</span> */}
 							</div>
 
 							<div className="flex flex-col items-center bg-muted/40 rounded-xl p-4 text-center shadow">

@@ -14,7 +14,6 @@ import {
 	SelectItem,
 } from "@/components/ui/select"
 import { Progress } from "@/components/ui/progress"
-// import { getCurrentElapsed } from "@/lib/utils"
 
 const PRIORITY_STYLES = {
 	Immediate: {
@@ -98,7 +97,6 @@ export function TaskList() {
 					const isSelectable = isRunning || sessions.length < 3
 					const priority = (task.priority?.name ?? "Normal") as PriorityLevel
 
-					// Получаем прогресс для задачи
 					const progressPercentage = getProgressPercentage(task.id, task.estimated_hours)
 					const elapsedSeconds = getElapsedSeconds(task.id)
 					const elapsedHours = Math.round((elapsedSeconds / 3600) * 10) / 10
@@ -138,24 +136,21 @@ export function TaskList() {
 												{priority}
 											</Badge>
 										</div>
-										<h3 className="font-medium text-sm leading-tight line-clamp-2">
-											{task.subject}
-										</h3>
+										<h3 className="font-medium text-sm leading-tight line-clamp-2">{task.subject}</h3>
 										<div className="mt-2">
 											<div className="flex justify-between text-xs text-muted-foreground mb-1">
 												<span>
 													{elapsedHours}ч / {task.estimated_hours}ч
 												</span>
-												<span>{progressPercentage}%</span>
+												<span className="w-[50px] text-right">{progressPercentage}%</span>
 											</div>
-											<Progress value={progressPercentage} className="h-1.5" />
+											<Progress value={progressPercentage} className="h-1.5 w-full" />
 										</div>
-
 									</div>
 									<div>
 										<Badge
 											variant={task.status.name === "In Progress" ? "default" : "secondary"}
-											className="text-xs"
+											className="text-xs w-[80px] text-center"
 										>
 											{task.status.name}
 										</Badge>
