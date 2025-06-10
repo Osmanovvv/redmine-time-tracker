@@ -13,7 +13,7 @@ import {
 	SelectContent,
 	SelectItem,
 } from "@/components/ui/select"
-import { Progress } from "@/components/ui/progress"
+import { ProgressBar } from "./ProgressBar"
 
 const PRIORITY_STYLES = {
 	Immediate: {
@@ -41,7 +41,7 @@ const PRIORITY_STYLES = {
 type PriorityLevel = keyof typeof PRIORITY_STYLES
 
 export function TaskList() {
-	const { tasks, selectedTask, selectTask, sessions, isLoading, getProgressPercentage, getElapsedSeconds } = useRedmineStore()
+	const { tasks, selectedTask, selectTask, sessions, isLoading } = useRedmineStore()
 	const [selectedProjectId, setSelectedProjectId] = useState<string>("all")
 
 	const projects = useMemo(() => {
@@ -97,10 +97,6 @@ export function TaskList() {
 					const isSelectable = isRunning || sessions.length < 3
 					const priority = (task.priority?.name ?? "Normal") as PriorityLevel
 
-					const progressPercentage = getProgressPercentage(task.id, task.estimated_hours)
-					const elapsedSeconds = getElapsedSeconds(task.id)
-					const elapsedHours = Math.round((elapsedSeconds / 3600) * 10) / 10
-
 					return (
 						<Card
 							key={task.id}
@@ -137,15 +133,7 @@ export function TaskList() {
 											</Badge>
 										</div>
 										<h3 className="font-medium text-sm leading-tight line-clamp-2">{task.subject}</h3>
-										<div className="mt-2">
-											<div className="flex justify-between text-xs text-muted-foreground mb-1">
-												<span>
-													{elapsedHours}ч / {task.estimated_hours}ч
-												</span>
-												<span className="w-[50px] text-right">{progressPercentage}%</span>
-											</div>
-											<Progress value={progressPercentage} className="h-1.5 w-full" />
-										</div>
+										<ProgressBar taskId={task.id} estimatedHours={task.estimated_hours ?? null} />
 									</div>
 									<div>
 										<Badge

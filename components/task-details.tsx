@@ -6,9 +6,10 @@ import { Badge } from "@/components/ui/badge"
 import { useRedmineStore } from "@/lib/store"
 import { Play, Pause, Square, Clock, User, Calendar } from "lucide-react"
 import { formatTime, getCurrentElapsed } from "@/lib/utils"
+// import { ProgressBar } from "./ProgressBar"
 
 export function TaskDetails() {
-	const { selectedTask, sessions, startTimer, pauseTimer, finishTimer, canStartTask } = useRedmineStore()
+	const { selectedTask, sessions, startTimer, pauseTimer, finishTimer, canStartTask, getProgressPercentage } = useRedmineStore()
 
 	if (!selectedTask) {
 		return (
@@ -33,6 +34,9 @@ export function TaskDetails() {
 		}
 		startTimer(selectedTask.id)
 	}
+
+	// Calculate progress percentage
+	const progressPercentage = getProgressPercentage(selectedTask.id, selectedTask.estimated_hours ?? undefined)
 
 	return (
 		<div className="p-6 h-full overflow-auto">
@@ -75,8 +79,8 @@ export function TaskDetails() {
 									<Square className="w-4 h-4 text-yellow-500" />
 									<span className="text-sm font-medium text-yellow-600">Готовность</span>
 								</div>
-								<div className="text-lg font-semibold">{selectedTask.done_ratio ?? 0}%</div>
-								{/* <span className="w-[50px] text-right">{progressPercentage}%</span> */}
+								{/* <div className="text-lg font-semibold">{selectedTask.done_ratio ?? 0}%</div> */}
+								<span className="w-[50px] text-right">{progressPercentage}%</span>
 							</div>
 
 							<div className="flex flex-col items-center bg-muted/40 rounded-xl p-4 text-center shadow">
