@@ -3,9 +3,10 @@
 import { useState, useMemo } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
 import { useRedmineStore } from "@/lib/store"
 import { cn } from "@/lib/utils"
-import { Clock, Play } from "lucide-react"
+import { Clock, Play, Search, Building, GitBranch } from "lucide-react"
 import {
 	Select,
 	SelectTrigger,
@@ -41,23 +42,37 @@ const PRIORITY_STYLES = {
 type PriorityLevel = keyof typeof PRIORITY_STYLES
 
 export function TaskList() {
-	const { tasks, selectedTask, selectTask, sessions, isLoading } = useRedmineStore()
-	const [selectedProjectId, setSelectedProjectId] = useState<string>("all")
+	const { tasks,
+		filteredTasks,
+		selectedTask,
+		selectTask,
+		sessions,
+		isLoading,
+		searchQuery,
+		setSearchQuery,
+		selectedProjectId,
+		setSelectedProjectId,
+		selectedVersionId,
+		setSelectedVersionId,
+		projects,
+		versions,
+	} = useRedmineStore()
+	// const [selectedProjectId, setSelectedProjectId] = useState<string>("all")
 
-	const projects = useMemo(() => {
-		const map = new Map<number, string>()
-		tasks.forEach((task) => {
-			if (task.project) {
-				map.set(task.project.id, task.project.name)
-			}
-		})
-		return Array.from(map.entries())
-	}, [tasks])
+	// const projects = useMemo(() => {
+	// 	const map = new Map<number, string>()
+	// 	tasks.forEach((task) => {
+	// 		if (task.project) {
+	// 			map.set(task.project.id, task.project.name)
+	// 		}
+	// 	})
+	// 	return Array.from(map.entries())
+	// }, [tasks])
 
-	const filteredTasks = useMemo(() => {
-		if (selectedProjectId === "all") return tasks
-		return tasks.filter((task) => task.project?.id === Number(selectedProjectId))
-	}, [tasks, selectedProjectId])
+	// const filteredTasks = useMemo(() => {
+	// 	if (selectedProjectId === "all") return tasks
+	// 	return tasks.filter((task) => task.project?.id === Number(selectedProjectId))
+	// }, [tasks, selectedProjectId])
 
 	if (isLoading) {
 		return (
@@ -73,22 +88,59 @@ export function TaskList() {
 
 	return (
 		<div className="p-4 h-full overflow-auto">
-			<h2 className="text-lg font-semibold mb-4">Активные задачи</h2>
+			<div className="space-y-4 mb-4">
+				<h2 className="text-lg font-semibold">Активные задачи</h2>
 
-			<div className="mb-4 w-64">
-				<Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-					<SelectTrigger>
-						<SelectValue placeholder="Фильтр по проекту" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="all">Все проекты</SelectItem>
-						{projects.map(([id, name]) => (
-							<SelectItem key={id} value={String(id)}>
-								{name}
+				{/* Поиск */}
+				<div className="relative">
+					<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+					<Input
+						placeholder="Поиск по названию, номеру, описанию..."
+						value={searchQuery}
+						onChange={(e) => setSearchQuery(e.target.value)}
+						className="pl-10"
+					/>
+				</div>
+
+				{/* Фильтры */}
+				<div className="grid grid-cols-1 gap-3">
+					{/* Фильтр по проекту */}
+					<div className="flex items-center gap-2">
+						<Building className="w-4 h-4 text-muted-foreground" />
+						<Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+						<SelectTrigger className="w-full">
+							<SelectValue placeholder="Все проекты" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="all">Все проекты</SelectItem>
+							{projects.map((project) => (
+							<SelectItem key={project.id} value={project.id.toString()}>
+								{project.name}
 							</SelectItem>
-						))}
-					</SelectContent>
-				</Select>
+							))}
+						</SelectContent>
+						</Select>
+					</div>
+
+					{/* Фильтр по спринту/версии */}
+					<div className="flex items-center gap-2">
+						<GitBranch className="w-4 h-4 text-muted-foreground" />
+						<Select value={selectedVersionId} onValueChange={setSelectedVersionId}>
+						<SelectTrigger className="w-full">
+							<SelectValue placeholder="Все спринты" />
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="all">Все спринты</SelectItem>
+							<SelectItem value="none">Без спринта</SelectItem>
+							{versions.map((version) => (
+							<SelectItem key={version.id} value={version.id.toString()}>
+								{version.name} ({version.status})
+							</SelectItem>
+							))}
+						</SelectContent>
+						</Select>
+					</div>
+				</div>
 			</div>
 
 			<div className="space-y-3">
@@ -133,6 +185,24 @@ export function TaskList() {
 											</Badge>
 										</div>
 										<h3 className="font-medium text-sm leading-tight line-clamp-2">{task.subject}</h3>
+
+
+										{/* Проект и спринт */}
+										<div className="flex flex-wrap gap-1 mt-2">
+											{task.project && (
+												<Badge variant="outline" className="text-xs">
+													<Building className="w-3 h-3 mr-1" />
+													{task.project.name}
+												</Badge>
+											)}
+											{task.fixed_version && (
+												<Badge variant="outline" className="text-xs">
+													<GitBranch className="w-3 h-3 mr-1" />
+													{task.fixed_version.name}
+												</Badge>
+											)}
+										</div>
+
 										<ProgressBar taskId={task.id} estimatedHours={task.estimated_hours ?? null} />
 									</div>
 									<div>
@@ -152,7 +222,10 @@ export function TaskList() {
 				{tasks.length === 0 && (
 					<div className="text-center text-muted-foreground py-8">
 						<Clock className="w-12 h-12 mx-auto mb-4 opacity-50" />
-						<p>Нет активных задач</p>
+						<p>{searchQuery || selectedProjectId || selectedVersionId ? "Задачи не найдены" : "Нет активных задач"}</p>
+						{(searchQuery || selectedProjectId || selectedVersionId) && (
+							<p className="text-sm mt-2">Попробуйте изменить критерии поиска или фильтры</p>
+						)}
 					</div>
 				)}
 			</div>
