@@ -30,16 +30,28 @@ export interface RedmineTask {
 	fixed_version?: {
 		id: number
 		name: string
-	  }
+	}
+}
+
+export interface Note {
+	id: string
+	title: string
+	description: string
+	createdAt: string
+	updatedAt: string
+	category?: string
+	totalTimeSpent: number // в миллисекундах
 }
 
 export interface TimeSession {
-	taskId: number
+	taskId?: number
+	noteId?: string
 	startTime: number
 	totalElapsed: number
 	currentIntervalStart: number | null
-	isRunning: boolean,
+	isRunning: boolean
 	isFinished: boolean
+	type: "task" | "note"
 }
 
 export interface TimeLogData {
@@ -49,7 +61,8 @@ export interface TimeLogData {
 	spentOn: string
 	activityId: number
 	statusId: number
-}	
+}
+
 export interface Activity {
 	id: number
 	name: string
@@ -79,7 +92,7 @@ export interface Version {
 export interface Project {
 	id: number
 	name: string
-  }
+}
 export interface Membership {
 	id: number
 	project: {
@@ -107,6 +120,11 @@ interface RedmineStore {
 	selectedTask: RedmineTask | null
 	isLoading: boolean
 
+	// Notes
+	notes: Note[]
+	selectedNote: Note | null
+	currentView: "tasks" | "notes"
+
 	// Activities
 	activities: Activity[]
 
@@ -125,7 +143,7 @@ interface RedmineStore {
 	currentUserId: number | null
 
 	// Time tracking
-	sessions: TimeSession[],
+	sessions: TimeSession[]
 
 	// Modal
 	timeLogModal: {
@@ -134,7 +152,7 @@ interface RedmineStore {
 	}
 
 	// Timer
-	timerInterval: Record<number, ReturnType<typeof setInterval>>
+	timerInterval: Record<string, ReturnType<typeof setInterval>>
 
 	// Search and filter functionality
 	searchQuery: string
@@ -163,6 +181,19 @@ interface RedmineStore {
 	submitTimeLog: (data: TimeLogData) => Promise<void>
 	closeTimeLogModal: () => void
 
+	// Notes actions
+	createNote: (title: string, description: string, category?: string) => void
+	updateNote: (id: string, updates: Partial<Note>) => void
+	deleteNote: (id: string) => void
+	selectNote: (note: Note) => void
+	startNoteTimer: (noteId: string) => void
+	pauseNoteTimer: (noteId: string) => void
+	finishNoteTimer: (noteId: string) => void
+	canStartNote: (noteId: string) => boolean
+
+	// View actions
+	setCurrentView: (view: "tasks" | "notes") => void
+
 	// Role-based filtering
 	getFilteredStatuses: (currentStatusName: string) => Status[]
 	determineUserRole: (roles: Role[]) => UserRole
@@ -171,6 +202,7 @@ interface RedmineStore {
 	// Progress calculation helpers
 	getElapsedSeconds: (taskId: number) => number
 	getProgressPercentage: (taskId: number, estimatedHours?: number) => number
+	getNoteElapsedSeconds: (noteId: string) => number
 
 	// Add cleanup action
 	cleanup: () => void
@@ -192,6 +224,9 @@ export const useRedmineStore = create<RedmineStore>()(
 			tasks: [],
 			selectedTask: null,
 			isLoading: false,
+			notes: [],
+			selectedNote: null,
+			currentView: "tasks",
 			activities: [],
 			statuses: [],
 			versions: [],
@@ -239,6 +274,9 @@ export const useRedmineStore = create<RedmineStore>()(
 					filteredTasks: [],
 					versions: [],
 					projects: [],
+					notes: [],
+					selectedNote: null,
+					currentView: "tasks",
 				})
 			},
 
@@ -539,12 +577,212 @@ export const useRedmineStore = create<RedmineStore>()(
 
 			selectTask: (task: RedmineTask) => {
 				const { loadUserRoles } = get()
-				set({ selectedTask: task })
+				set({ selectedTask: task, selectedNote: null })
 
 				// Загружаем роли пользователя для проекта задачи (если проект изменился)
 				if (task.project?.id) {
 					loadUserRoles(task.project.id)
 				}
+			},
+
+			// Notes actions
+			createNote: (title: string, description: string, category?: string) => {
+				const newNote: Note = {
+					id: Date.now().toString(),
+					title,
+					description,
+					category,
+					createdAt: new Date().toISOString(),
+					updatedAt: new Date().toISOString(),
+					totalTimeSpent: 0,
+				}
+
+				set((state) => ({
+					notes: [...state.notes, newNote],
+				}))
+			},
+
+			updateNote: (id: string, updates: Partial<Note>) => {
+				set((state) => ({
+					notes: state.notes.map((note) =>
+						note.id === id ? { ...note, ...updates, updatedAt: new Date().toISOString() } : note,
+					),
+					selectedNote:
+						state.selectedNote?.id === id
+							? { ...state.selectedNote, ...updates, updatedAt: new Date().toISOString() }
+							: state.selectedNote,
+				}))
+			},
+
+			deleteNote: (id: string) => {
+				set((state) => ({
+					notes: state.notes.filter((note) => note.id !== id),
+					selectedNote: state.selectedNote?.id === id ? null : state.selectedNote,
+					sessions: state.sessions.filter((session) => session.noteId !== id),
+				}))
+			},
+
+			selectNote: (note: Note) => {
+				set({ selectedNote: note, selectedTask: null })
+			},
+
+			startNoteTimer: (noteId: string) => {
+				const { sessions, timerInterval } = get()
+				const now = Date.now()
+
+				// Найти сессию для этой заметки
+				const existing = sessions.find((s) => s.noteId === noteId)
+
+				if (!existing && sessions.length >= 3) return // максимум 3 сессии
+
+				const updatedSessions = sessions.map((session) => {
+					// Автоматически ставим все другие сессии на паузу
+					if (
+						(session.taskId !== undefined || session.noteId !== noteId) &&
+						session.isRunning &&
+						session.currentIntervalStart
+					) {
+						const elapsed = Date.now() - session.currentIntervalStart
+						const sessionKey = session.taskId?.toString() || session.noteId || ""
+						if (timerInterval[sessionKey]) {
+							clearInterval(timerInterval[sessionKey])
+						}
+						return {
+							...session,
+							isRunning: false,
+							totalElapsed: session.totalElapsed + elapsed,
+							currentIntervalStart: null,
+						}
+					}
+
+					// Обновляем текущую заметку — запускаем, если она существует
+					if (session.noteId === noteId) {
+						return {
+							...session,
+							isRunning: true,
+							currentIntervalStart: now,
+						}
+					}
+
+					return session
+				})
+
+				// Если заметка новая — добавляем
+				if (!existing) {
+					updatedSessions.push({
+						noteId,
+						startTime: now,
+						totalElapsed: 0,
+						currentIntervalStart: now,
+						isRunning: true,
+						isFinished: false,
+						type: "note",
+					})
+				}
+
+				// Очищаем все предыдущие интервалы
+				Object.entries(timerInterval).forEach(([key, interval]) => {
+					clearInterval(interval)
+				})
+
+				// Создаём новый только для этой заметки
+				const interval = setInterval(() => {
+					const { sessions } = get()
+					const updated = sessions.map((session) => {
+						if (session.noteId === noteId && session.isRunning && session.currentIntervalStart) {
+							const now = Date.now()
+							const delta = now - session.currentIntervalStart
+							return {
+								...session,
+								totalElapsed: session.totalElapsed + delta,
+								currentIntervalStart: now,
+							}
+						}
+						return session
+					})
+					set({ sessions: updated })
+				}, 1000)
+
+				set({
+					sessions: updatedSessions,
+					timerInterval: { [noteId]: interval },
+				})
+			},
+
+			pauseNoteTimer: (noteId: string) => {
+				const { sessions, timerInterval } = get()
+				const session = sessions.find((s) => s.noteId === noteId)
+				if (!session?.isRunning || !session.currentIntervalStart) return
+
+				const now = Date.now()
+				const intervalDuration = now - session.currentIntervalStart
+
+				// Очистить только таймер для этой заметки
+				if (timerInterval && timerInterval[noteId]) {
+					clearInterval(timerInterval[noteId])
+					// eslint-disable-next-line @typescript-eslint/no-unused-vars
+					const { [noteId]: _, ...rest } = timerInterval
+					set({ timerInterval: rest })
+				}
+
+				set({
+					sessions: sessions.map((s) =>
+						s.noteId === noteId
+							? {
+								...s,
+								totalElapsed: s.totalElapsed + intervalDuration,
+								currentIntervalStart: null,
+								isRunning: false,
+							}
+							: s,
+					),
+				})
+			},
+
+			finishNoteTimer: (noteId: string) => {
+				const { sessions, pauseNoteTimer, selectedNote, updateNote } = get()
+				const session = sessions.find((s) => s.noteId === noteId)
+				if (!session) return
+
+				// Calculate final time including current running interval
+				let finalTime = session.totalElapsed
+				if (session.isRunning && session.currentIntervalStart) {
+					finalTime += Date.now() - session.currentIntervalStart
+				}
+
+				// Pause if running
+				if (session.isRunning) {
+					pauseNoteTimer(noteId)
+				}
+
+				// Update note with spent time
+				if (selectedNote && selectedNote.id === noteId) {
+					updateNote(selectedNote.id, {
+						totalTimeSpent: selectedNote.totalTimeSpent + finalTime,
+					})
+				}
+
+				// Remove finished session
+				set({
+					sessions: sessions.filter((s) => s.noteId !== noteId),
+				})
+			},
+
+			canStartNote: (noteId: string) => {
+				const { sessions } = get()
+
+				// Проверяем, есть ли уже запущенная сессия с другим noteId или taskId
+				const runningSession = Array.isArray(sessions) ? sessions.find((s) => s.isRunning) : null
+
+				// Разрешить запуск, если:
+				// - нет активных сессий вообще
+				// - либо активная сессия — это та же заметка
+				return !runningSession || runningSession.noteId === noteId
+			},
+
+			// View actions
+			setCurrentView: (view: "tasks" | "notes") => {
+				set({ currentView: view })
 			},
 
 			// Timer actions
@@ -553,15 +791,22 @@ export const useRedmineStore = create<RedmineStore>()(
 				const now = Date.now()
 
 				// Найти сессию для этой задачи
-				const existing = sessions.find(s => s.taskId === taskId)
+				const existing = sessions.find((s) => s.taskId === taskId)
 
 				if (!existing && sessions.length >= 3) return // максимум 3 сессии
 
-				const updatedSessions = sessions.map(session => {
+				const updatedSessions = sessions.map((session) => {
 					// Автоматически ставим все другие задачи на паузу
-					if (session.taskId !== taskId && session.isRunning && session.currentIntervalStart) {
+					if (
+						(session.taskId !== taskId || session.noteId !== undefined) &&
+						session.isRunning &&
+						session.currentIntervalStart
+					) {
 						const elapsed = Date.now() - session.currentIntervalStart
-						clearInterval(timerInterval[session.taskId])
+						const sessionKey = session.taskId?.toString() || session.noteId || ""
+						if (timerInterval[sessionKey]) {
+							clearInterval(timerInterval[sessionKey])
+						}
 						return {
 							...session,
 							isRunning: false,
@@ -591,18 +836,19 @@ export const useRedmineStore = create<RedmineStore>()(
 						currentIntervalStart: now,
 						isRunning: true,
 						isFinished: false,
+						type: "task",
 					})
 				}
 
 				// Очищаем все предыдущие интервалы
-				Object.entries(timerInterval).forEach(([int]) => {
-					clearInterval(int)
+				Object.entries(timerInterval).forEach(([key, interval]) => {
+					clearInterval(interval)
 				})
 
 				// Создаём новый только для этой задачи
 				const interval = setInterval(() => {
 					const { sessions } = get()
-					const updated = sessions.map(session => {
+					const updated = sessions.map((session) => {
 						if (session.taskId === taskId && session.isRunning && session.currentIntervalStart) {
 							const now = Date.now()
 							const delta = now - session.currentIntervalStart
@@ -619,28 +865,29 @@ export const useRedmineStore = create<RedmineStore>()(
 
 				set({
 					sessions: updatedSessions,
-					timerInterval: { [taskId]: interval },
+					timerInterval: { [taskId.toString()]: interval },
 				})
 			},
 
 			pauseTimer: (taskId: number) => {
 				const { sessions, timerInterval } = get()
-				const session = sessions.find(s => s.taskId === taskId)
+				const session = sessions.find((s) => s.taskId === taskId)
 				if (!session?.isRunning || !session.currentIntervalStart) return
 
 				const now = Date.now()
 				const intervalDuration = now - session.currentIntervalStart
 
 				// Очистить только таймер для этой задачи
-				if (timerInterval && timerInterval[taskId]) {
-					clearInterval(timerInterval[taskId])
+				const taskIdStr = taskId.toString()
+				if (timerInterval && timerInterval[taskIdStr]) {
+					clearInterval(timerInterval[taskIdStr])
 					// eslint-disable-next-line @typescript-eslint/no-unused-vars
-					const { [taskId]: _, ...rest } = timerInterval
+					const { [taskIdStr]: _, ...rest } = timerInterval
 					set({ timerInterval: rest })
 				}
 
 				set({
-					sessions: sessions.map(s =>
+					sessions: sessions.map((s) =>
 						s.taskId === taskId
 							? {
 								...s,
@@ -648,7 +895,7 @@ export const useRedmineStore = create<RedmineStore>()(
 								currentIntervalStart: null,
 								isRunning: false,
 							}
-							: s
+							: s,
 					),
 				})
 			},
@@ -658,7 +905,7 @@ export const useRedmineStore = create<RedmineStore>()(
 				const { sessions, pauseTimer } = get()
 				if (!sessions) return
 
-				const session = sessions.find(s => s.taskId === taskId)
+				const session = sessions.find((s) => s.taskId === taskId)
 				if (!session) return
 
 				// Calculate final time including current running interval
@@ -673,7 +920,7 @@ export const useRedmineStore = create<RedmineStore>()(
 				}
 
 				set({
-					sessions: sessions.map(session =>
+					sessions: sessions.map((session) =>
 						session.taskId === taskId
 							? {
 								...session,
@@ -681,7 +928,7 @@ export const useRedmineStore = create<RedmineStore>()(
 								currentIntervalStart: null,
 								isFinished: true,
 							}
-							: session
+							: session,
 					),
 					timeLogModal: {
 						isOpen: true,
@@ -689,7 +936,6 @@ export const useRedmineStore = create<RedmineStore>()(
 					},
 				})
 			},
-
 
 			cleanup: () => {
 				const { timerInterval } = get()
@@ -703,10 +949,8 @@ export const useRedmineStore = create<RedmineStore>()(
 			canStartTask: (taskId: number) => {
 				const { sessions } = get()
 
-				// Проверяем, есть ли уже запущенная сессия с другим taskId
-				const runningSession = Array.isArray(sessions)
-					? sessions.find(s => s.isRunning)
-					: null
+				// Проверяем, есть ли уже запущенная сессия с другим taskId или noteId
+				const runningSession = Array.isArray(sessions) ? sessions.find((s) => s.isRunning) : null
 
 				// Разрешить запуск, если:
 				// - нет активных сессий вообще
@@ -726,6 +970,26 @@ export const useRedmineStore = create<RedmineStore>()(
 				// Если сессия активна, добавляем текущий интервал
 				if (session.isRunning && session.currentIntervalStart) {
 					elapsed += Date.now() - session.currentIntervalStart
+				}
+
+				// Конвертируем из миллисекунд в секунды
+				return Math.floor(elapsed / 1000)
+			},
+
+			getNoteElapsedSeconds: (noteId: string) => {
+				const { sessions, notes } = get()
+				const session = sessions.find((s) => s.noteId === noteId)
+				const note = notes.find((n) => n.id === noteId)
+
+				let elapsed = note?.totalTimeSpent || 0
+
+				// Добавляем время текущей сессии если она активна
+				if (session) {
+					elapsed += session.totalElapsed
+
+					if (session.isRunning && session.currentIntervalStart) {
+						elapsed += Date.now() - session.currentIntervalStart
+					}
 				}
 
 				// Конвертируем из миллисекунд в секунды
@@ -757,13 +1021,13 @@ export const useRedmineStore = create<RedmineStore>()(
 								comments: data.comments,
 								spent_on: data.spentOn,
 								activity_id: data.activityId,
-								status_id: data.statusId
+								status_id: data.statusId,
 							},
 						}),
 					})
 					if (response.ok) {
 						const { sessions } = get()
-						const activeSessions = sessions.filter(s => !s.isFinished)
+						const activeSessions = sessions.filter((s) => !s.isFinished)
 						set({ sessions: activeSessions })
 					} else {
 						throw new Error("Ошибка отправки лога")
@@ -846,9 +1110,11 @@ export const useRedmineStore = create<RedmineStore>()(
 				redmineUrl: state.redmineUrl,
 				apiKey: state.apiKey,
 				isConfigured: state.isConfigured,
-				currentUserId: state.currentUserId, // Сохраняем ID пользователя
+				currentUserId: state.currentUserId,
+				notes: state.notes, // Сохраняем заметки
+				currentView: state.currentView, // Сохраняем текущий вид
 				sessions: Array.isArray(state.sessions)
-					? state.sessions.map(session => ({
+					? state.sessions.map((session) => ({
 						...session,
 						currentIntervalStart: null,
 						isRunning: false,
@@ -864,8 +1130,7 @@ export const useRedmineStore = create<RedmineStore>()(
 						useRedmineStore.setState({ hasHydrated: true })
 					}, 0)
 				}
-			}
-
+			},
 		},
 	),
 )
