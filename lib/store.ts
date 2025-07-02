@@ -795,7 +795,7 @@ export const useRedmineStore = create<RedmineStore>()(
 
 				if (!existing && sessions.length >= 3) return // максимум 3 сессии
 
-				const updatedSessions = sessions.map((session) => {
+				const updatedSessions = sessions.map(session => {
 					// Автоматически ставим все другие задачи на паузу
 					if (
 						(session.taskId !== taskId || session.noteId !== undefined) &&
@@ -878,11 +878,10 @@ export const useRedmineStore = create<RedmineStore>()(
 				const intervalDuration = now - session.currentIntervalStart
 
 				// Очистить только таймер для этой задачи
-				const taskIdStr = taskId.toString()
-				if (timerInterval && timerInterval[taskIdStr]) {
-					clearInterval(timerInterval[taskIdStr])
+				if (timerInterval && timerInterval[taskId]) {
+					clearInterval(timerInterval[taskId])
 					// eslint-disable-next-line @typescript-eslint/no-unused-vars
-					const { [taskIdStr]: _, ...rest } = timerInterval
+					const { [taskId]: _, ...rest } = timerInterval
 					set({ timerInterval: rest })
 				}
 
