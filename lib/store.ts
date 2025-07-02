@@ -118,6 +118,7 @@ interface RedmineStore {
 	tasks: RedmineTask[]
 	selectedTask: RedmineTask | null
 	isLoading: boolean
+	isSearching: boolean
 
 	// Activities
 	activities: Activity[]
@@ -167,6 +168,7 @@ interface RedmineStore {
 	loadConfig: () => void
 	testConnection: (url: string, apiKey: string) => Promise<boolean>
 	loadTasks: () => Promise<void>
+	searchTasks: (query: string) => Promise<void>
 	loadActivities: () => Promise<void>
 	loadStatuses: () => Promise<void>
 	loadVersions: () => Promise<void>
@@ -225,6 +227,7 @@ export const useRedmineStore = create<RedmineStore>()(
 			tasks: [],
 			selectedTask: null,
 			isLoading: false,
+			isSearching: false,
 			activities: [],
 			statuses: [],
 			versions: [],
@@ -346,9 +349,8 @@ export const useRedmineStore = create<RedmineStore>()(
 
 					if (response.ok) {
 						const data = await response.json()
-						// set({ tasks: data.issues || [] })
 						const tasks = data.issues || []
-						set({ tasks })
+						set({ tasks, filteredTasks: tasks })
 
 						// Извлекаем уникальные проекты из задач
 						const uniqueProjects = tasks.reduce((acc: Project[], task: RedmineTask) => {
@@ -362,12 +364,12 @@ export const useRedmineStore = create<RedmineStore>()(
 						// Загружаем версии/спринты
 						await loadVersions()
 
-						// Инициализируем filteredTasks с полным списком задач
-						set({ filteredTasks: tasks })
-						// Затем применяем фильтры если есть поисковый запрос или фильтры
-						if (get().searchQuery.trim() || get().selectedProjectId || get().selectedVersionId) {
-							get().filterTasks()
-						}
+						// // Инициализируем filteredTasks с полным списком задач
+						// set({ filteredTasks: tasks })
+						// // Затем применяем фильтры если есть поисковый запрос или фильтры
+						// if (get().searchQuery.trim() || get().selectedProjectId || get().selectedVersionId) {
+						// 	get().filterTasks()
+						// }
 
 						// Если есть задачи, загружаем роли для первого проекта
 						if (tasks.length > 0 && tasks[0].project?.id) {
@@ -379,6 +381,75 @@ export const useRedmineStore = create<RedmineStore>()(
 					console.error("Ошибка загрузки задач:", error)
 				} finally {
 					set({ isLoading: false })
+				}
+			},
+
+			// Поиск задач через API
+			searchTasks: async (query: string) => {
+				const { redmineUrl, apiKey } = get()
+				if (!redmineUrl || !apiKey) return
+
+				// Если запрос пустой, загружаем все задачи
+				if (!query.trim()) {
+					get().loadTasks()
+					return
+				}
+
+				// Минимальная длина запроса для поиска
+				if (query.trim().length < 2) {
+					set({ filteredTasks: [] })
+					return
+				}
+
+				set({ isSearching: true })
+				try {
+					const response = await fetch("/api/redmine/search", {
+						method: "POST",
+						headers: { "Content-Type": "application/json" },
+						body: JSON.stringify({
+							url: redmineUrl,
+							apiKey,
+							query: query.trim(),
+							limit: 50,
+						}),
+					})
+
+					if (response.ok) {
+						const data = await response.json()
+						const searchResults = data.issues || []
+
+						set({
+							filteredTasks: searchResults,
+							// Обновляем основной список задач только если это первый поиск
+							tasks: get().tasks.length === 0 ? searchResults : get().tasks,
+						})
+
+						// Извлекаем проекты из результатов поиска
+						const uniqueProjects = searchResults.reduce((acc: Project[], task: RedmineTask) => {
+							if (task.project && !acc.find((p) => p.id === task.project!.id)) {
+								acc.push(task.project)
+							}
+							return acc
+						}, [])
+
+						// Объединяем с существующими проектами
+						const existingProjects = get().projects
+						const allProjects = [...existingProjects]
+						uniqueProjects.forEach((project: Project) => {
+							if (!allProjects.find((p) => p.id === project.id)) {
+								allProjects.push(project)
+							}
+						})
+						set({ projects: allProjects })
+					} else {
+						console.error("Ошибка поиска задач")
+						set({ filteredTasks: [] })
+					}
+				} catch (error) {
+					console.error("Ошибка поиска задач:", error)
+					set({ filteredTasks: [] })
+				} finally {
+					set({ isSearching: false })
 				}
 			},
 
@@ -841,7 +912,6 @@ export const useRedmineStore = create<RedmineStore>()(
 			// Search and filter
 			setSearchQuery: (query: string) => {
 				set({ searchQuery: query })
-				get().filterTasks()
 			},
 
 			setSelectedProjectId: (projectId: string) => {
@@ -855,30 +925,9 @@ export const useRedmineStore = create<RedmineStore>()(
 			},
 
 			filterTasks: () => {
-				// const { tasks, searchQuery } = get()
+				const { filteredTasks, selectedProjectId, selectedVersionId } = get()
 
-				// // Если нет поискового запроса, показываем все задачи
-				// if (!searchQuery.trim()) {
-				// 	set({ filteredTasks: tasks })
-				// 	return
-				// }
-				const { tasks, searchQuery, selectedProjectId, selectedVersionId } = get()
-
-				let filtered = tasks
-
-				// Поиск по тексту
-				if (searchQuery.trim()) {
-					const query = searchQuery.toLowerCase()
-					filtered = filtered.filter(
-						(task) =>
-							task.subject.toLowerCase().includes(query) ||
-							task.id.toString().includes(query) ||
-							(task.description && task.description.toLowerCase().includes(query)) ||
-							(task.project?.name && task.project.name.toLowerCase().includes(query)) ||
-							(task.assigned_to?.name && task.assigned_to.name.toLowerCase().includes(query)) ||
-							task.status.name.toLowerCase().includes(query),
-					)
-				}
+				let filtered = filteredTasks
 
 				// Фильтр по проекту
 				if (selectedProjectId && selectedProjectId !== "all") {

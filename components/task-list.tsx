@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { useRedmineStore } from "@/lib/store"
+import { useDebounce } from "@/hooks/use-debounce"
 import { cn } from "@/lib/utils"
-import { Clock, Play, Search, Building, GitBranch } from "lucide-react"
+import { Clock, Play, Search, Building, GitBranch, Loader2 } from "lucide-react"
 import {
 	Select,
 	SelectTrigger,
@@ -48,6 +49,7 @@ export function TaskList() {
 		selectTask,
 		sessions,
 		isLoading,
+		isSearching,
 		searchQuery,
 		setSearchQuery,
 		selectedProjectId,
@@ -56,6 +58,7 @@ export function TaskList() {
 		setSelectedVersionId,
 		projects,
 		versions,
+		searchTasks,
 	} = useRedmineStore()
 	// const [selectedProjectId, setSelectedProjectId] = useState<string>("all")
 
@@ -73,6 +76,16 @@ export function TaskList() {
 	// 	if (selectedProjectId === "all") return tasks
 	// 	return tasks.filter((task) => task.project?.id === Number(selectedProjectId))
 	// }, [tasks, selectedProjectId])
+
+	// Debounce поискового запроса на 700мс
+	const debouncedSearchQuery = useDebounce(searchQuery, 700)
+
+	// Выполняем поиск при изменении debounced значения
+	useEffect(() => {
+		if (debouncedSearchQuery !== undefined) {
+			searchTasks(debouncedSearchQuery)
+		}
+	}, [debouncedSearchQuery, searchTasks])
 
 	if (isLoading) {
 		return (
@@ -94,13 +107,21 @@ export function TaskList() {
 				{/* Поиск */}
 				<div className="relative">
 					<Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
+					{isSearching && (
+						<Loader2 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4 animate-spin" />
+					)}
 					<Input
 						placeholder="Поиск по названию, номеру, описанию..."
 						value={searchQuery}
 						onChange={(e) => setSearchQuery(e.target.value)}
-						className="pl-10"
+						className="pl-10 pr-10"
 					/>
 				</div>
+
+				{/* Показываем подсказку о поиске */}
+				{searchQuery.length > 0 && searchQuery.length < 2 && (
+					<div className="text-xs text-muted-foreground px-2">Введите минимум 2 символа для поиска</div>
+				)}
 
 				{/* Фильтры */}
 				<div className="grid grid-cols-1 gap-3">
@@ -108,17 +129,17 @@ export function TaskList() {
 					<div className="flex items-center gap-2">
 						<Building className="w-4 h-4 text-muted-foreground" />
 						<Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
-						<SelectTrigger className="w-full">
-							<SelectValue placeholder="Все проекты" />
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="all">Все проекты</SelectItem>
-							{projects.map((project) => (
-							<SelectItem key={project.id} value={project.id.toString()}>
-								{project.name}
-							</SelectItem>
-							))}
-						</SelectContent>
+							<SelectTrigger className="w-full">
+								<SelectValue placeholder="Все проекты" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">Все проекты</SelectItem>
+								{projects.map((project) => (
+									<SelectItem key={project.id} value={project.id.toString()}>
+										{project.name}
+									</SelectItem>
+								))}
+							</SelectContent>
 						</Select>
 					</div>
 
@@ -219,13 +240,22 @@ export function TaskList() {
 					)
 				})}
 
-				{tasks.length === 0 && (
+				{filteredTasks.length === 0 && !isSearching && (
 					<div className="text-center text-muted-foreground py-8">
 						<Clock className="w-12 h-12 mx-auto mb-4 opacity-50" />
-						<p>{searchQuery || selectedProjectId || selectedVersionId ? "Задачи не найдены" : "Нет активных задач"}</p>
-						{(searchQuery || selectedProjectId || selectedVersionId) && (
+						{/* <p>{searchQuery || selectedProjectId || selectedVersionId ? "Задачи не найдены" : "Нет активных задач"}</p> */}
+						{/* {(searchQuery || selectedProjectId || selectedVersionId) && (
 							<p className="text-sm mt-2">Попробуйте изменить критерии поиска или фильтры</p>
-						)}
+						)} */}
+						<p>{searchQuery ? "Задачи не найдены" : "Нет активных задач"}</p>
+						{searchQuery && <p className="text-sm mt-2">Попробуйте изменить поисковый запрос или очистить фильтры</p>}
+					</div>
+				)}
+
+				{isSearching && (
+					<div className="text-center text-muted-foreground py-8">
+						<Loader2 className="w-8 h-8 mx-auto mb-4 animate-spin" />
+						<p>Поиск задач...</p>
 					</div>
 				)}
 			</div>
