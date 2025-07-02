@@ -158,6 +158,16 @@ export function TimeLogModal() {
 							onChange={(e) => setHoursInput(e.target.value)}
 							placeholder="Пример: 1.5 или 1h 30m (мин. 0.1 ч)"
 						/>
+						<div className="text-xs">
+							<p>Use the format:</p>
+							<ul className="list-disc list-inside">
+								<li>w = weeks</li>
+								<li>d = days</li>
+								<li>h = hours</li>
+								<li>m = minutes</li>
+							</ul>
+						</div>
+
 					</div>
 
 					<div className="flex gap-4">

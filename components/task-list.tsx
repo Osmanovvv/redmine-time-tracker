@@ -123,7 +123,7 @@ export function TaskList() {
 					</div>
 
 					{/* Фильтр по спринту/версии */}
-					<div className="flex items-center gap-2">
+					{/* <div className="flex items-center gap-2">
 						<GitBranch className="w-4 h-4 text-muted-foreground" />
 						<Select value={selectedVersionId} onValueChange={setSelectedVersionId}>
 						<SelectTrigger className="w-full">
@@ -139,7 +139,7 @@ export function TaskList() {
 							))}
 						</SelectContent>
 						</Select>
-					</div>
+					</div> */}
 				</div>
 			</div>
 
@@ -195,12 +195,12 @@ export function TaskList() {
 													{task.project.name}
 												</Badge>
 											)}
-											{task.fixed_version && (
+											{/* {task.fixed_version && (
 												<Badge variant="outline" className="text-xs">
 													<GitBranch className="w-3 h-3 mr-1" />
 													{task.fixed_version.name}
 												</Badge>
-											)}
+											)} */}
 										</div>
 
 										<ProgressBar taskId={task.id} estimatedHours={task.estimated_hours ?? null} />
