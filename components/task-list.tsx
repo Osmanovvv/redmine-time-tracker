@@ -78,7 +78,7 @@ export function TaskList() {
 	// }, [tasks, selectedProjectId])
 
 	// Debounce поискового запроса на 700мс
-	const debouncedSearchQuery = useDebounce(searchQuery, 700)
+	const debouncedSearchQuery = useDebounce(searchQuery, 500)
 
 	// Выполняем поиск при изменении debounced значения
 	useEffect(() => {
