@@ -4,7 +4,9 @@ import { useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { useRedmineStore } from "@/lib/store"
+// import { useRedmineStore } from "@/lib/store"
+import { useTasksStore } from "@/store/tasks"
+import { useTimerStore } from "@/store/timer"
 import { useDebounce } from "@/hooks/use-debounce"
 import { cn } from "@/lib/utils"
 import { Clock, Play, Search, Building, GitBranch, Loader2 } from "lucide-react"
@@ -43,11 +45,10 @@ const PRIORITY_STYLES = {
 type PriorityLevel = keyof typeof PRIORITY_STYLES
 
 export function TaskList() {
-	const { tasks,
+	const {
 		filteredTasks,
 		selectedTask,
 		selectTask,
-		sessions,
 		isLoading,
 		isSearching,
 		searchQuery,
@@ -59,8 +60,9 @@ export function TaskList() {
 		projects,
 		versions,
 		searchTasks,
-	} = useRedmineStore()
-	// const [selectedProjectId, setSelectedProjectId] = useState<string>("all")
+	} = useTasksStore()
+
+	const { sessions } = useTimerStore()
 
 	// const projects = useMemo(() => {
 	// 	const map = new Map<number, string>()
@@ -248,7 +250,7 @@ export function TaskList() {
 							<p className="text-sm mt-2">Попробуйте изменить критерии поиска или фильтры</p>
 						)} */}
 						<p>{searchQuery ? "Задачи не найдены" : "Нет активных задач"}</p>
-						{searchQuery && <p className="text-sm mt-2">Попробуйте изменить поисковый запрос или очистить фильтры</p>}
+						{searchQuery && <p className="text-sm mt-2">Попробуйте изменить поисковый запрос</p>}
 					</div>
 				)}
 

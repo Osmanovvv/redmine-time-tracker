@@ -15,74 +15,53 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { useRedmineStore } from "@/lib/store"
-import { Clock, Send, Shield, Lock } from "lucide-react"
+import { useTasksStore } from "@/store/tasks"
+import { useActivitiesStore } from "@/store/activities"
+import { useStatusesStore } from "@/store/statuses"
+import { useModalStore } from "@/store/modal"
+import { useTimeLogStore } from "@/store/timeLog"
+import { Clock, Send, Shield, Lock, ArrowRight } from "lucide-react"
 
 export function TimeLogModal() {
-	const {
-		timeLogModal,
-		closeTimeLogModal,
-		submitTimeLog,
-		selectedTask,
-		activities,
-		loadActivities,
-		loadStatuses,
-		getFilteredStatuses,
-		userRole,
-		canChangeStatus,
-	} = useRedmineStore()
+	const { selectedTask, userRole } = useTasksStore()
+	const { activities, loadActivities } = useActivitiesStore()
+	const { loadStatuses, getFilteredStatuses, canChangeStatus } = useStatusesStore()
+	const { timeLogModal, closeTimeLogModal } = useModalStore()
+	const { submitTimeLog } = useTimeLogStore()
 
-	const [hoursInput, setHoursInput] = useState("")
+	const [hours, setHours] = useState("")
 	const [comments, setComments] = useState("")
 	const [activityId, setActivityId] = useState("")
 	const [statusId, setStatusId] = useState("")
 	const [isSubmitting, setIsSubmitting] = useState(false)
 
 	// Получаем отфильтрованные статусы для текущей задачи
-	const filteredStatuses = selectedTask ? getFilteredStatuses(selectedTask.status.name) : []
+	const filteredStatuses = selectedTask ? getFilteredStatuses(selectedTask.status.name, userRole) : []
 	const canChangeTaskStatus = selectedTask ? canChangeStatus(selectedTask.status.name, userRole) : false
 
 	useEffect(() => {
 		if (timeLogModal.isOpen && timeLogModal.duration) {
-			const durationMs = timeLogModal.duration
-			const hours = durationMs / 3600000
-			const roundedHours = Math.round(hours * 10) / 10
-			const finalHours = Math.max(0.1, roundedHours)
-
-			setHoursInput(finalHours.toFixed(1))
+			// Правильно округляем до 0.1 часа
+			const calculatedHours = Math.round((timeLogModal.duration / 1000 / 3600) * 10) / 10
+			setHours(calculatedHours.toString())
 			setComments("")
 			setActivityId("")
 			setStatusId("")
+
+			// Загружаем список активностей и статусов
 			loadActivities()
 			loadStatuses()
 		}
 	}, [timeLogModal.isOpen, timeLogModal.duration, loadActivities, loadStatuses])
 
-	function parseHours(input: string): number {
-		const regex = /(?:(\d+)\s*h)?\s*(?:(\d+)\s*m)?/i
-		const match = input.match(regex)
-
-		if (!match) {
-			const float = parseFloat(input)
-			return isNaN(float) ? 0.1 : Math.max(0.1, Math.round(float * 10) / 10)
-		}
-
-		const h = parseInt(match[1] || "0", 10)
-		const m = parseInt(match[2] || "0", 10)
-		const total = h + m / 60
-		return Math.max(0.1, Math.round(total * 10) / 10)
-	}
-
 	const handleSubmit = async () => {
-		if (!selectedTask || !hoursInput.trim() || !comments.trim() || !activityId) return
-
-		const parsedHours = parseHours(hoursInput)
+		if (!selectedTask || !hours || !comments.trim() || !activityId) return
 
 		setIsSubmitting(true)
 		try {
 			await submitTimeLog({
 				issueId: selectedTask.id,
-				hours: parsedHours,
+				hours: Number.parseFloat(hours),
 				comments: comments.trim(),
 				spentOn: new Date().toISOString().split("T")[0],
 				activityId: Number.parseInt(activityId),
@@ -138,6 +117,7 @@ export function TimeLogModal() {
 						<Clock className="w-5 h-5" />
 						Завершение сессии
 					</DialogTitle>
+
 					<DialogDescription>
 						Отправить лог времени в Redmine для задачи #{selectedTask?.id}
 						<span className="flex items-center gap-2 mt-2">
@@ -146,6 +126,7 @@ export function TimeLogModal() {
 							</Badge>
 						</span>
 					</DialogDescription>
+
 				</DialogHeader>
 
 				<div className="space-y-4">
@@ -154,8 +135,8 @@ export function TimeLogModal() {
 						<Input
 							id="hours"
 							type="text"
-							value={hoursInput}
-							onChange={(e) => setHoursInput(e.target.value)}
+							value={hours}
+							onChange={(e) => setHours(e.target.value)}
 							placeholder="Пример: 1.5 или 1h 30m (мин. 0.1 ч)"
 						/>
 						<div className="text-xs">
@@ -174,7 +155,7 @@ export function TimeLogModal() {
 						<div className="flex-1 space-y-2">
 							<Label htmlFor="activity">Тип активности *</Label>
 							<Select value={activityId} onValueChange={setActivityId}>
-								<SelectTrigger id="activity">
+								<SelectTrigger>
 									<SelectValue placeholder="Выберите тип активности" />
 								</SelectTrigger>
 								<SelectContent>
@@ -197,7 +178,7 @@ export function TimeLogModal() {
 									<SelectValue
 										placeholder={
 											!canChangeTaskStatus
-												? "New"
+												? "Изменение запрещено"
 												: filteredStatuses.length === 0
 													? "Нет доступных статусов"
 													: "Изменить статус"
@@ -216,14 +197,35 @@ export function TimeLogModal() {
 						</div>
 					</div>
 
-					{userRole === "Other" && (
-						<div className="text-sm text-amber-600 bg-amber-50 p-3 rounded-md border border-amber-200">
+					{/* {selectedTask && (
+						<div className="space-y-2">
+							<div className="flex items-center gap-2 text-sm flex-wrap">
+								<span className="text-muted-foreground">Текущий статус:</span>
+								<Badge variant="outline" className="text-xs">
+									{selectedTask.status.name}
+								</Badge>
+								{canChangeTaskStatus && filteredStatuses.length > 0 && (
+									<>
+										<ArrowRight className="w-3 h-3 text-muted-foreground" />
+										<span className="text-muted-foreground">Доступно:</span>
+										{filteredStatuses.map((status, index) => (
+											<Badge key={status.id} variant="secondary" className="text-xs">
+												{status.name}
+												{index < filteredStatuses.length - 1 && ","}
+											</Badge>
+										))}
+									</>
+								)}
+							</div>
+
 							<div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded-md">
-								<Shield className="w-3 h-3" />
-								<span>{getStatusChangeMessage()}</span>
+								<div className="flex items-center gap-2">
+									<Shield className="w-3 h-3" />
+									<span>{getStatusChangeMessage()}</span>
+								</div>
 							</div>
 						</div>
-					)}
+					)} */}
 
 					<div className="space-y-2">
 						<Label htmlFor="comments">Описание работы</Label>
@@ -243,7 +245,7 @@ export function TimeLogModal() {
 					</Button>
 					<Button
 						onClick={handleSubmit}
-						disabled={!hoursInput.trim() || !comments.trim() || !activityId || isSubmitting}
+						disabled={!hours || !comments.trim() || !activityId || isSubmitting}
 					>
 						<Send className="w-4 h-4 mr-2" />
 						{isSubmitting ? "Отправка..." : "Отправить лог"}

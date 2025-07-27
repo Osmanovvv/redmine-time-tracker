@@ -1,20 +1,29 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { useRedmineStore } from "@/lib/store"
+// import { useRedmineStore } from "@/lib/store"
+import { useTimerStore } from "@/store/timer"
 import { cn, formatTime } from "@/lib/utils"
 import { Clock, Play, Search, Plus, FileText, Timer } from "lucide-react"
 import { CreateNoteModal } from "./create-note-modal"
 
 export function NotesList() {
-	const { notes, selectedNote, selectNote, sessions, deleteNote, getNoteElapsedSeconds } = useRedmineStore()
+	const { notes, selectedNote, selectNote, sessions, deleteNote, getNoteElapsedSeconds } = useTimerStore()
 
 	const [searchQuery, setSearchQuery] = useState("")
 	const [showCreateModal, setShowCreateModal] = useState(false)
+	// const [, forceUpdate] = useState(0)
+
+	// useEffect(() => {
+	// 	const interval = setInterval(() => {
+	// 		forceUpdate((n) => n + 1)
+	// 	}, 1000)
+	// 	return () => clearInterval(interval)
+	// }, [])
 
 	// Фильтрация заметок по поисковому запросу
 	const filteredNotes = notes.filter(

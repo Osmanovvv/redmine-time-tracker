@@ -3,12 +3,17 @@
 import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useRedmineStore } from "@/lib/store"
+// import { useRedmineStore } from "@/lib/store"
+import { useTasksStore } from "@/store/tasks"
+import { useConfigStore } from "@/store/config"
+import { useTimerStore } from "@/store/timer"
 import { Timer, Settings, RefreshCw } from "lucide-react"
 import { formatTime, getCurrentElapsed } from "@/lib/utils"
 
 export function Header() {
-	const { sessions, clearConfig, loadTasks, isLoading, cleanup, userRole } = useRedmineStore()
+	const { sessions, cleanup } = useTimerStore()
+	const { clearConfig } = useConfigStore()
+	const { loadTasks, isLoading, userRole } = useTasksStore()
 
 	// Cleanup timer on unmount
 	useEffect(() => {

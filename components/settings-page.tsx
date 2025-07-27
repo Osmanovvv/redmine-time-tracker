@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { useRedmineStore } from "@/lib/store"
+import { useConfigStore } from "@/store/config"
 import { Settings, AlertCircle } from "lucide-react"
 
 export function SettingsPage() {
@@ -15,7 +15,7 @@ export function SettingsPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
 
-  const { saveConfig, testConnection } = useRedmineStore()
+	const { saveConfig, testConnection } = useConfigStore()
 
   const handleSave = async () => {
     if (!url || !apiKey) {

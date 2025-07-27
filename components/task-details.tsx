@@ -3,13 +3,27 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { useRedmineStore } from "@/lib/store"
+import { useTasksStore } from "@/store/tasks"
+import { useTimerStore } from "@/store/timer"
+// import { useModalStore } from "@/store/modal"
 import { Play, Pause, Square, Clock, User, Calendar } from "lucide-react"
 import { formatTime, getCurrentElapsed } from "@/lib/utils"
+import { useState, useEffect } from 'react'
 // import { ProgressBar } from "./ProgressBar"
 
 export function TaskDetails() {
-	const { selectedTask, sessions, startTimer, pauseTimer, finishTimer, canStartTask, getProgressPercentage } = useRedmineStore()
+	// const { selectedTask, sessions, startTimer, pauseTimer, finishTimer, canStartTask, getProgressPercentage } = useRedmineStore()
+	const { selectedTask } = useTasksStore()
+	const { sessions, startTimer, pauseTimer, finishTimer, canStartTask, getProgressPercentage } = useTimerStore()
+	// const [now, setNow] = useState(Date.now())
+
+	// useEffect(() => {
+	// 	const interval = setInterval(() => {
+	// 		setNow(Date.now()) // 💡 Просто перерендеривает компонент каждую секунду
+	// 	}, 1000)
+	// 	return () => clearInterval(interval)
+	// }, [])
+
 
 	if (!selectedTask) {
 		return (

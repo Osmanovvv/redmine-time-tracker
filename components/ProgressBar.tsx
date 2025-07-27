@@ -1,5 +1,6 @@
 import { Progress } from "@/components/ui/progress"
-import { useRedmineStore } from "@/lib/store"
+// import { useRedmineStore } from "@/lib/store"
+import { useTimerStore } from "@/store/timer"
 
 type ProgressBarProps = {
   taskId: number
@@ -7,7 +8,7 @@ type ProgressBarProps = {
 }
 
 export function ProgressBar({ taskId, estimatedHours }: ProgressBarProps) {
-  const { getProgressPercentage, getElapsedSeconds } = useRedmineStore()
+	const { getProgressPercentage, getElapsedSeconds } = useTimerStore()
   
 	const progressPercentage = getProgressPercentage(taskId, estimatedHours ?? undefined)
   const elapsedSeconds = getElapsedSeconds(taskId)

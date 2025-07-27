@@ -1,7 +1,9 @@
 "use client"
 
 import { useEffect } from "react"
-import { useRedmineStore } from "@/lib/store"
+import { useTasksStore } from "@/store/tasks"
+import { useConfigStore } from "@/store/config"
+import { useTimerStore } from "@/store/timer"
 import { TaskList } from "@/components/task-list"
 import { TaskDetails } from "@/components/task-details"
 import { NotesList } from "@/components/notes-list"
@@ -13,7 +15,9 @@ import { Badge } from "@/components/ui/badge"
 import { CheckSquare, FileText } from "lucide-react"
 
 export function MainInterface() {
-	const { loadTasks, isLoading, userRole, currentView, setCurrentView } = useRedmineStore()
+	const { loadTasks, isLoading, userRole } = useTasksStore()
+	const { clearConfig } = useConfigStore()
+	const { currentView, setCurrentView } = useTimerStore()
 
 	useEffect(() => {
 		loadTasks()

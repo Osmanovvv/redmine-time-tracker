@@ -1,22 +1,32 @@
 "use client"
 
 import { useEffect } from "react"
-import { useRedmineStore } from "@/lib/store"
+import { useConfigStore } from "@/store/config"
 import { SettingsPage } from "@/components/settings-page"
 import { MainInterface } from "@/components/main-interface"
 
 export default function HomePage() {
-	const isConfigured = useRedmineStore(s => s.isConfigured)
-	const hasHydrated = useRedmineStore(s => s.hasHydrated)
-	const loadConfig = useRedmineStore(s => s.loadConfig)
+  const { isConfigured, loadConfig, hasHydrated } = useConfigStore()
 
-	useEffect(() => {
-		loadConfig()
-	}, [loadConfig])
+  useEffect(() => {
+    loadConfig()
+  }, [loadConfig])
 
-	// 💥 Ключевой момент: ничего не рендерим, пока стор не загружен
-	if (!hasHydrated) return null
+  // Показываем загрузку пока не завершена гидратация
+  if (!hasHydrated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Загрузка...</p>
+        </div>
+      </div>
+    )
+  }
 
-	if (!isConfigured) return <SettingsPage />
-	return <MainInterface />
+  if (!isConfigured) {
+    return <SettingsPage />
+  }
+
+  return <MainInterface />
 }
